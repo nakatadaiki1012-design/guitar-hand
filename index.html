@@ -1,0 +1,1132 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ウクレレ・ハンドガイド</title>
+<meta name="description" content="ウクレレのコードの押さえ方を、リアルな手の形で表示する練習アプリ">
+<style>
+  :root{
+    --bg:#1b1410; --panel:#271d17; --panel2:#30241c; --line:#46352a;
+    --text:#f6ece0; --sub:#c9b6a3; --accent:#ffb24d; --accent2:#ff7a59;
+    --f1:#ff6b6b; --f2:#ffb84d; --f3:#4dc3ff; --f4:#b48cff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;
+    -webkit-tap-highlight-color:transparent}
+  body{min-height:100vh;background:
+    radial-gradient(1200px 600px at 20% -10%,#3b2a1e 0,transparent 60%),
+    radial-gradient(900px 500px at 110% 10%,#33241a 0,transparent 55%),var(--bg)}
+  header{max-width:1180px;margin:0 auto;padding:18px 16px 4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  header h1{font-size:22px;margin:0;letter-spacing:.04em}
+  header h1 span{color:var(--accent)}
+  header p{margin:0;color:var(--sub);font-size:13px}
+  header a{margin-left:auto;color:var(--sub);font-size:13px;text-decoration:none;border:1px solid var(--line);padding:6px 10px;border-radius:999px}
+  main{max-width:1180px;margin:0 auto;padding:8px 16px 40px;display:grid;gap:14px}
+  .panel{background:linear-gradient(180deg,var(--panel),#221913);border:1px solid var(--line);border-radius:16px;padding:14px}
+  .panel h2{font-size:15px;margin:0 0 10px;color:var(--sub);font-weight:600;letter-spacing:.05em}
+  .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .label{font-size:12px;color:var(--sub);min-width:52px}
+  button{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:8px 12px;cursor:pointer;transition:transform .08s,background .15s,border-color .15s}
+  button:hover{border-color:#6a5141}
+  button:active{transform:scale(.96)}
+  button.on{background:linear-gradient(180deg,#ffbf66,#ff9a3d);color:#2b1a0c;border-color:#ffbf66;font-weight:700}
+  button:disabled{opacity:.3;cursor:not-allowed}
+  .root-btn{min-width:48px;font-size:17px;font-weight:700}
+  .stage{padding:10px 10px 12px}
+  .stage-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:2px 6px 6px}
+  #chordName{font-size:44px;font-weight:800;line-height:1;letter-spacing:.02em}
+  #chordReading{color:var(--sub);font-size:15px}
+  #difficulty{margin-left:auto;font-size:13px;color:var(--accent)}
+  .svgwrap{position:relative;border-radius:12px;overflow:hidden;background:#140e0a}
+  svg{display:block;width:100%;height:auto}
+  #handView{display:block;width:100%;aspect-ratio:16/9;cursor:grab;touch-action:none}
+  @media (max-width:640px){#handView{aspect-ratio:4/3}}
+  #sideView{display:block;width:100%;aspect-ratio:4/3}
+  .overlay{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  .overlay .lab,.overlay .fbadge{position:absolute;transform:translate(-50%,-50%);white-space:nowrap}
+  .lab{font-weight:800;color:#f6ece0;font-size:15px;text-shadow:0 0 4px #000,0 0 8px #000}
+  .lab small{font-size:10px;font-weight:400;color:#c9b6a3;margin-left:1px}
+  .lab.open{color:#ffd36b}
+  .fbadge{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#1b1410;border:3px solid #1b1410;font-size:15px;box-shadow:0 2px 6px #0008}
+  .hint{position:absolute;right:10px;bottom:8px;font-size:11px;color:#8c7a69;pointer-events:none}
+  .sidetag{position:absolute;right:8px;top:8px;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:800;color:#1b1410}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+  .controls .sep{flex:1}
+  .big{font-size:16px;padding:10px 16px;font-weight:700}
+  .play{background:linear-gradient(180deg,#ff8f6b,#ff6a4a);border-color:#ff8f6b;color:#2a0f06}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .seg button{border:0;border-radius:0}
+  .grid2{display:grid;grid-template-columns:1.1fr 1fr;gap:14px}
+  @media (max-width:820px){.grid2{grid-template-columns:1fr} #chordName{font-size:36px}}
+  .steps{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+  .steps li{display:flex;gap:10px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:15px}
+  .steps li.open{opacity:.85}
+  .steps li[data-f]{cursor:pointer}
+  .steps li.focus{border-color:var(--accent);box-shadow:0 0 0 2px #ffb24d33 inset}
+  .badge{flex:0 0 auto;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#1b1410;font-size:15px}
+  .steps b{color:#fff}
+  .tips{margin:12px 0 0;padding:10px 12px;border-radius:12px;background:#2c2119;border:1px dashed #5a4433;color:var(--sub);font-size:13px;line-height:1.7}
+  .tips strong{color:var(--accent)}
+  .views{display:grid;grid-template-columns:1fr 150px;gap:10px;align-items:start}
+  @media (max-width:480px){.views{grid-template-columns:1fr 110px}}
+  .cap{font-size:12px;color:var(--sub);margin:6px 2px 0;line-height:1.5}
+  .prog-list{display:flex;flex-wrap:wrap;gap:6px}
+  .prog-chords{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .pc{min-width:64px;text-align:center;padding:10px 8px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);font-size:20px;font-weight:800}
+  .pc.now{background:linear-gradient(180deg,#ffbf66,#ff9a3d);color:#2b1a0c;border-color:#ffbf66;transform:scale(1.06)}
+  .pc.next{border-color:var(--accent);box-shadow:0 0 0 2px #ffb24d44 inset}
+  .beats{display:flex;gap:6px;margin-left:8px}
+  .beat{width:14px;height:14px;border-radius:50%;background:#3a2c22;border:1px solid var(--line)}
+  .beat.on{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+  input[type=range]{accent-color:var(--accent);width:140px}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--sub);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .legend i{width:12px;height:12px;border-radius:50%;display:inline-block}
+  footer{max-width:1180px;margin:0 auto;padding:0 16px 30px;color:#8c7a69;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎶 ウクレレ・<span>ハンドガイド</span></h1>
+  <p>コードを選ぶと、押さえ方を「手の形」で見せます</p>
+  
+</header>
+
+<main>
+  <!-- コードを選ぶ -->
+  <section class="panel">
+    <h2>① コードを選ぶ</h2>
+    <div class="row" id="rootRow"><span class="label">音</span></div>
+    <div class="row" id="typeRow" style="margin-top:8px"><span class="label">種類</span></div>
+  </section>
+
+  <!-- 手の表示 -->
+  <section class="panel stage">
+    <div class="stage-head">
+      <div id="chordName">C</div>
+      <div id="chordReading">シー・メジャー</div>
+      <div id="difficulty"></div>
+    </div>
+    <div class="svgwrap" id="mainWrap"><canvas id="handView" aria-label="手の形（3D）"></canvas><div class="overlay" id="mainOverlay"></div><div class="hint">ドラッグで回せます・タップで鳴ります</div></div>
+    <div class="controls">
+      <button class="big play" id="btnStrum">🔊 ジャラーンと鳴らす</button>
+      <button id="btnArp">🎵 1本ずつ鳴らす</button>
+      <span class="sep"></span>
+      <div class="seg" title="見る向き">
+        <button data-view="diag" class="on">ななめ</button>
+        <button data-view="self">自分目線</button>
+        <button data-view="front">正面</button>
+        <button data-view="side">横から</button>
+      </div>
+      <button id="btnMirror">左右反転</button>
+      <button id="btnBadges" class="on">指番号</button>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--f1)"></i>① 人差し指</span>
+      <span><i style="background:var(--f2)"></i>② 中指</span>
+      <span><i style="background:var(--f3)"></i>③ 薬指</span>
+      <span><i style="background:var(--f4)"></i>④ 小指</span>
+      <span id="viewName">・ななめ（手の形がいちばん分かりやすい）</span>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <section class="panel">
+      <h2>② 押さえ方（タップすると③の図がその指に）</h2>
+      <ul class="steps" id="steps"></ul>
+      <div class="tips" id="tips"></div>
+    </section>
+    <section class="panel">
+      <h2>③ 指の立て方（ネックを輪切りにして横から見た図）</h2>
+      <div class="views">
+        <div>
+          <div class="svgwrap sidewrap"><canvas id="sideView" aria-label="指のアーチ（断面）"></canvas><div class="overlay" id="sideOverlay"></div></div>
+          <p class="cap">押さえている指のすぐ手前でネックを切って、ヘッド側からのぞいた図です。指は<strong style="color:var(--accent)">アーチ（山なり）</strong>にして、指先で真上から押さえます。親指はネックの裏に軽く添えます。</p>
+        </div>
+        <div>
+          <svg id="diagram" viewBox="0 0 150 210" aria-label="コード表"></svg>
+          <p class="cap">ふつうのコード表<br>（縦向き）</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 進行練習 -->
+  <section class="panel">
+    <h2>④ コードチェンジ練習（手が次のコードへ動きます）</h2>
+    <div class="row prog-list" id="progList"></div>
+    <div class="prog-chords" id="progChords"></div>
+    <div class="controls">
+      <button class="big play" id="btnProg">▶ スタート</button>
+      <span class="label" style="min-width:auto">テンポ</span>
+      <input type="range" id="bpm" min="40" max="140" value="70">
+      <span id="bpmVal" style="font-size:13px;color:var(--sub)">70</span>
+      <div class="beats" id="beats"><div class="beat"></div><div class="beat"></div><div class="beat"></div><div class="beat"></div></div>
+    </div>
+    <p class="cap">4拍ごとにコードが変わります。4拍目で次のコードが光るので、先に指の準備をしましょう。最初はゆっくり（テンポ50くらい）がおすすめ。</p>
+  </section>
+</main>
+<footer>標準チューニング（G・C・E・A）。右利き用。手の大きさは平均的な大人（コンサートサイズのウクレレ）で計算しています。</footer>
+
+<script>
+'use strict';
+/* =========================================================
+   データ
+   弦の並び： 0=4弦(G) 1=3弦(C) 2=2弦(E) 3=1弦(A)
+   frets  : 各弦を押さえるフレット（0 = 押さえない）
+   fingers: 使う指（1人差し 2中 3薬 4小 / 0 = なし）
+   barre  : セーハ（1本の指で何本もまとめて押さえる）
+   ========================================================= */
+const STRING_NAMES = ['G','C','E','A'];
+const STRING_NUM   = ['4弦','3弦','2弦','1弦'];
+const STRING_MIDI  = [67,60,64,69];
+const FINGER_NAMES = ['','人差し指','中指','薬指','小指'];
+const FINGER_COLORS= ['','#ff6b6b','#ffb84d','#4dc3ff','#b48cff'];
+
+const ROOTS = [
+  {id:'C', read:'シー'},{id:'D', read:'ディー'},{id:'E♭',read:'イーフラット'},{id:'E', read:'イー'},
+  {id:'F', read:'エフ'},{id:'G', read:'ジー'},{id:'A', read:'エー'},{id:'B♭',read:'ビーフラット'},{id:'B', read:'ビー'}
+];
+const TYPES = [
+  {id:'',    label:'メジャー',  read:'メジャー'},
+  {id:'m',   label:'m',        read:'マイナー'},
+  {id:'7',   label:'7',        read:'セブンス'},
+  {id:'m7',  label:'m7',       read:'マイナーセブンス'},
+  {id:'maj7',label:'maj7',     read:'メジャーセブンス'},
+  {id:'sus4',label:'sus4',     read:'サスフォー'}
+];
+const B = (fret,from,to)=>({fret,finger:1,from,to});
+const CHORDS = {
+  'C':[[0,0,0,3],[0,0,0,3]], 'Cm':[[0,3,3,3],[0,1,1,1],B(3,1,3)], 'C7':[[0,0,0,1],[0,0,0,1]],
+  'Cm7':[[3,3,3,3],[1,1,1,1],B(3,0,3)], 'Cmaj7':[[0,0,0,2],[0,0,0,2]], 'Csus4':[[0,0,1,3],[0,0,1,3]],
+  'D':[[2,2,2,0],[1,2,3,0]], 'Dm':[[2,2,1,0],[2,3,1,0]], 'D7':[[2,0,2,0],[1,0,2,0]],
+  'Dm7':[[2,2,1,3],[2,3,1,4]], 'Dmaj7':[[2,2,2,4],[1,1,1,3],B(2,0,2)], 'Dsus4':[[0,2,3,0],[0,2,3,0]],
+  'E♭':[[0,3,3,1],[0,2,3,1]], 'E♭m':[[3,3,2,1],[3,4,2,1]], 'E♭7':[[3,3,3,4],[1,1,1,2],B(3,0,2)],
+  'E♭m7':[[3,3,2,4],[2,3,1,4]], 'E♭maj7':[[3,3,3,5],[1,1,1,3],B(3,0,2)],
+  'E':[[4,4,4,2],[2,3,4,1]], 'Em':[[0,4,3,2],[0,3,2,1]], 'E7':[[1,2,0,2],[1,2,0,3]],
+  'Em7':[[0,2,0,2],[0,1,0,2]], 'Emaj7':[[1,3,0,2],[1,3,0,2]],
+  'F':[[2,0,1,0],[2,0,1,0]], 'Fm':[[1,0,1,3],[1,0,2,4]], 'F7':[[2,3,1,3],[2,3,1,4]],
+  'Fm7':[[1,3,1,3],[1,3,1,4],B(1,0,3)], 'Fmaj7':[[2,4,1,0],[2,4,1,0]], 'Fsus4':[[3,0,1,1],[3,0,1,1],B(1,2,3)],
+  'G':[[0,2,3,2],[0,1,3,2]], 'Gm':[[0,2,3,1],[0,2,3,1]], 'G7':[[0,2,1,2],[0,2,1,3]],
+  'Gm7':[[0,2,1,1],[0,2,1,1],B(1,2,3)], 'Gmaj7':[[0,2,2,2],[0,1,2,3]], 'Gsus4':[[0,2,3,3],[0,1,2,3]],
+  'A':[[2,1,0,0],[2,1,0,0]], 'Am':[[2,0,0,0],[2,0,0,0]], 'A7':[[0,1,0,0],[0,1,0,0]],
+  'Am7':[[0,0,0,0],[0,0,0,0]], 'Amaj7':[[1,1,0,0],[1,2,0,0]], 'Asus4':[[2,2,0,0],[1,2,0,0]],
+  'B♭':[[3,2,1,1],[3,2,1,1],B(1,2,3)], 'B♭m':[[3,1,1,1],[3,1,1,1],B(1,1,3)], 'B♭7':[[1,2,1,1],[1,2,1,1],B(1,0,3)],
+  'B♭m7':[[1,1,1,1],[1,1,1,1],B(1,0,3)], 'B♭maj7':[[3,2,1,0],[3,2,1,0]], 'B♭sus4':[[3,3,1,1],[2,3,1,1],B(1,2,3)],
+  'B':[[4,3,2,2],[3,2,1,1],B(2,2,3)], 'Bm':[[4,2,2,2],[3,1,1,1],B(2,1,3)], 'B7':[[2,3,2,2],[1,2,1,1],B(2,0,3)],
+  'Bm7':[[2,2,2,2],[1,1,1,1],B(2,0,3)], 'Bmaj7':[[4,3,2,1],[4,3,2,1]], 'Bsus4':[[4,4,2,2],[2,3,1,1],B(2,2,3)]
+};
+function getChord(name){
+  const c = CHORDS[name]; if(!c) return null;
+  return {name, frets:c[0], fingers:c[1], barre:c[2]||null};
+}
+
+const PROGRESSIONS = [
+  {name:'はじめての3コード', chords:['C','F','G7','C']},
+  {name:'カノン風（王道）',   chords:['C','G','Am','Em','F','C','F','G']},
+  {name:'ポップス定番',       chords:['C','G','Am','F']},
+  {name:'切ない進行',         chords:['Am','F','G','C']},
+  {name:'J-POP王道進行',      chords:['F','G','Em','Am']},
+  {name:'ハワイアン',         chords:['C','A7','D7','G7']},
+  {name:'セーハに挑戦',       chords:['C','Am','B♭','G7']}
+];
+
+/* =========================================================
+   3Dの寸法（単位はmm。コンサートウクレレと平均的な大人の手）
+   座標：x = ヘッド→ボディ方向 / y = 4弦(G・天井側)→1弦(A・床側) / z = 指板の表側（客席側）
+   ========================================================= */
+const DEG = Math.PI/180;
+const SCALE_LEN = 380;                                   // 弦長
+const fretX = n => SCALE_LEN*(1-Math.pow(2,-n/12));      // 実物と同じフレット間隔
+const slotCenter = f => (fretX(f-1)+fretX(f))/2;
+const halfW = x => 17.5 + Math.max(0,x)*0.016;           // 指板の半分の幅
+const strY = (i,x) => (i-1.5)*(9.4 + Math.max(0,x)*0.0125);
+const STRING_R = [0.32,0.42,0.37,0.32];
+const STRING_TOP = 3.3;                                  // 指板から弦までの高さ
+const NECK_BACK_Z = -21;                                 // ネック裏のいちばん低いところ
+
+// 指の骨の長さ（基節・中節・末節）… 解剖学の計測値（人差し〜小指）を参考
+const BONE = {1:[45,26,22], 2:[49,30,23], 3:[46,29,23], 4:[37,22,20]};
+// 指の太さ（半径）：付け根・第二関節・第一関節・指先
+const RAD  = {1:[9.6,8.6,7.6,7.0], 2:[9.9,8.9,7.8,7.1], 3:[9.3,8.4,7.4,6.8], 4:[8.2,7.4,6.6,6.1]};
+// 第一関節は第二関節の約0.75倍だけ曲がる（小指は約0.6倍）
+const COUPLE = {1:0.75, 2:0.75, 3:0.75, 4:0.6};
+const THUMB_BONE = [46,33,28];
+const THUMB_RAD  = [15,10.8,9.8,8.8];
+
+/* ---------- ベクトル計算 ---------- */
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const mul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const vlen=a=>Math.hypot(a[0],a[1],a[2]);
+const norm=a=>{const l=vlen(a)||1; return [a[0]/l,a[1]/l,a[2]/l];};
+const lerp=(a,b,t)=>a+(b-a)*t;
+const lerp3=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+
+/* ---------- 手の向き ----------
+   手首はネックの下（床側）かつ体の側。指の付け根はネックの床側の縁の外にあり、
+   指はそこから客席側へ立ち上がって、手のひら側へ丸まりながら弦を押さえる。 */
+function handFrame(){
+  const F = norm([-0.12,-0.70,0.70]);                     // 手の甲の向き（手首→指の付け根）
+  let N = [0,-0.70,-0.70]; N = norm(sub(N, mul(F, dot(N,F)))); // 手のひらが向く方向（ネック側）
+  let A = norm(cross(N,F)); if(A[0]<0) A = mul(A,-1);      // 人差し指→小指の方向
+  return {F,N,A};
+}
+
+// 平面内の3関節チェーン（角度は手のひら側に曲がる向きが＋）
+function chain2(L, th, p2, p3){
+  let a=th, x=0, y=0; const out=[[0,0]];
+  [[L[0],0],[L[1],p2],[L[2],p3]].forEach(([l,da])=>{ a+=da; x+=l*Math.cos(a); y+=l*Math.sin(a); out.push([x,y]); });
+  return out;
+}
+
+/* 1本の指の形を求める（逆運動学）。
+   第二関節の曲げ角を二分探索で決め、第一関節の連動比率をいくつか試して
+   「指先が真上から当たる」「他の弦に触れない」「関節が無理な角度にならない」ものを選ぶ */
+function solveFinger(f, K, T, H, kind){
+  const R = RAD[f];
+  const L = [BONE[f][0], BONE[f][1], BONE[f][2]-R[3]];
+  const d = sub(T,K), b = dot(d,H.N);
+  let e = sub(d, mul(H.N,b)); const a = vlen(e); e = a>1e-6 ? mul(e,1/a) : H.F;
+  const tgt = Math.hypot(a,b), tAng = Math.atan2(b,a);
+  const toW = ([u,v]) => add(K, add(mul(e,u), mul(H.N,v)));
+  const cs = kind==='press' ? [0.4,0.5,0.6,0.7,0.8,0.9,1.0] : [COUPLE[f]];
+  let best = null;
+  for(const c of cs){
+    const lenAt = p=>{ const q=chain2(L,0,p,c*p)[3]; return Math.hypot(q[0],q[1]); };
+    const maxP = 112*DEG; let p2;
+    if(tgt >= lenAt(0)) p2 = 0;
+    else if(tgt <= lenAt(maxP)) p2 = maxP;
+    else { let lo=0, hi=maxP; for(let i=0;i<28;i++){ const m=(lo+hi)/2; if(lenAt(m)>tgt) lo=m; else hi=m; } p2=(lo+hi)/2; }
+    const q = chain2(L,0,p2,c*p2)[3];
+    const th = tAng - Math.atan2(q[1],q[0]);
+    const pts = chain2(L,th,p2,c*p2).map(toW);
+    let pen = 0;
+    const dd = norm(sub(pts[3],pts[2]));
+    if(kind==='press'){                                    // 指先はなるべく真上から
+      const ang = Math.acos(Math.min(1,Math.max(-1,-dd[2])))/DEG;
+      pen += Math.max(0, ang-20)*0.15;
+      if(dd[1] > 0.35) pen += (dd[1]-0.35)*20;              // 手の方へ折り返すのは不自然
+    }
+    const p1 = norm(sub(pts[1],pts[0]));
+    const mcp = Math.atan2(dot(p1,H.N), dot(p1,H.F))/DEG;  // 付け根の関節の角度（反らすのは苦手）
+    if(mcp < -5) pen += (-5-mcp)*1.2;
+    if(mcp > 90) pen += (mcp-90)*0.5;
+    if(c*p2/DEG > 88) pen += (c*p2/DEG-88)*0.3;
+    pen += Math.abs(c-COUPLE[f])*2;
+    for(let s=0;s<3;s++) for(let t=0;t<=1.001;t+=0.25){    // 他の弦に触れないか
+      if(kind!=='hover' && s===2 && t>0.3) continue;
+      const P = lerp3(pts[s],pts[s+1],t), r = lerp(R[s],R[s+1],t);
+      if(Math.abs(P[1]) < halfW(P[0]) + r*0.5){ const cl = P[2]-r-(STRING_TOP+0.6); if(cl<0) pen += -cl*1.5; }
+    }
+    if(!best || pen<best.pen) best = {pen, pts};
+  }
+  return best.pts;
+}
+
+// 2本の骨で点Cに届く中間の関節（pole の側に曲がる）
+function ik3(A, C, l1, l2, pole){
+  const d = sub(C,A); let dist = vlen(d);
+  dist = Math.min(Math.max(dist, Math.abs(l1-l2)+0.01), l1+l2-0.01);
+  const ax = norm(d), pv = sub(pole,A);
+  const perp = norm(sub(pv, mul(ax, dot(pv,ax))));
+  const ca = (l1*l1+dist*dist-l2*l2)/(2*l1*dist), sa = Math.sqrt(Math.max(0,1-ca*ca));
+  return add(A, add(mul(ax,l1*ca), mul(perp,l1*sa)));
+}
+
+// セーハ：人差し指を寝かせて、腹で弦をまとめて押さえる
+function solveBarre(H, K, barre, zK){
+  const R = RAD[1], L1 = BONE[1][0], L2 = BONE[1][1], L3 = BONE[1][2]-R[3];
+  const x = fretX(barre.fret) - 6;
+  const T = [x-1.5, strY(barre.from,x) - 3, 1.3+R[3]];
+  const D = [x-0.8, T[1]+L3, 1.5+R[2]];
+  if(barre.to-barre.from+1 >= 3){
+    const P = [x, D[1]+L2, 1.8+R[1]];
+    const sb = Math.min(0.8, Math.max(-0.3, (P[2]-zK)/L1));
+    const Kb = add(P, mul(norm([0, Math.cos(Math.asin(sb)), -sb]), L1));
+    return [Kb, P, D, T];
+  }
+  const P = ik3(K, D, L1, L2, add(mul(add(K,D),0.5), add(mul(H.N,-40),[0,0,25])));
+  return [K, P, D, T];
+}
+
+/* ---------- コード → 手全体のポーズ ---------- */
+function computePose(chord){
+  const H = handFrame();
+  const used = {};
+  chord.fingers.forEach((f,s)=>{ if(!f) return; (used[f] ||= {strings:[], fret:chord.frets[s]}).strings.push(s); });
+  const barre = chord.barre;
+  // 指先の位置（フレットのすぐ手前。同じフレットに何本か並ぶときは斜めにずらす）
+  const tipX = {}, byFret = {};
+  for(const f in used){ if(barre && +f===1) continue; (byFret[used[f].fret] ||= []).push(+f); }
+  for(const fr in byFret){
+    const list = byFret[fr].sort((a,b)=>a-b), n = list.length;
+    list.forEach((f,i)=>{ tipX[f] = fretX(+fr) - 4.5 - (n-1-i)*4.5; });
+  }
+  if(barre) tipX[1] = fretX(barre.fret) - 6;
+  // 指の付け根（ナックル）の並び：指先の位置に合わせて手全体をずらす
+  const SP = 18.5;
+  let anc = 0, cnt = 0;
+  for(const f in tipX){ anc += tipX[f] - (f-1)*SP; cnt++; }
+  anc = cnt ? anc/cnt : fretX(1)-2;
+  anc = Math.max(4, anc);
+  const fullBarre = barre && (barre.to-barre.from+1) >= 3;
+  const yK = fullBarre ? 50 : 44, zK = fullBarre ? -12 : -22;
+  const kOff = [0,2.5,1.5,-3];
+  const K = {};
+  for(let f=1; f<=4; f++) K[f] = add([anc+(f-1)*SP, yK, zK], mul(H.F, kOff[f-1]));
+
+  const fingers = {};
+  for(let f=1; f<=4; f++){
+    let pts, mode, string = null;
+    if(barre && f===1){
+      mode = 'barre'; pts = solveBarre(H, K[1], barre, zK); K[1] = pts[0]; string = barre.from;
+    } else if(used[f]){
+      mode = 'press'; string = Math.min(...used[f].strings);
+      const x = tipX[f];
+      pts = solveFinger(f, K[f], [x, strY(string,x)+1.2, 1.2+RAD[f][3]], H, 'press');
+    } else {
+      mode = 'hover';   // 使わない指：軽く曲げて弦の少し上に浮かせる
+      const x = K[f][0]+2;
+      pts = solveFinger(f, K[f], [x, f===4? 9 : 1, RAD[f][3]+(f===4? 12 : 9)], H, 'hover');
+    }
+    fingers[f] = {mode, pts, string};
+  }
+  // 手のひら・手首
+  const Kc = mul(add(K[2],K[3]),0.5);
+  const W = add(add(Kc, mul(H.F,-82)), mul(H.A,6));
+  const Bm = [-13,-4,4,12].map(o=>add(add(W, mul(H.A,o)), mul(H.F,14)));
+  // 親指：ネックの裏、人差し指と中指の間くらいに指の腹を当てる
+  const T0 = add(add(add(W, mul(H.A,-20)), mul(H.N,14)), mul(H.F,28));
+  const thumbX = (K[1][0]+K[2][0])/2 + 2;
+  const Tc = [thumbX, -1, NECK_BACK_Z - THUMB_RAD[3] + 0.5];
+  const dT = norm([-0.25,-0.9,0.25]);
+  const T2 = sub(Tc, mul(dT, THUMB_BONE[2]-THUMB_RAD[3]));
+  const T1 = ik3(T0, T2, THUMB_BONE[0], THUMB_BONE[1], add(mul(add(T0,T2),0.5), [-20,10,-40]));
+  // 弦：押さえたところで指板側へ沈む
+  const str = [0,1,2,3].map(s=>{
+    if(!chord.frets[s]) return [-1,0,0,0];
+    const f = chord.fingers[s];
+    const cx = (barre && f===1 && chord.frets[s]===barre.fret) ? fretX(barre.fret)-6 : tipX[f];
+    return [cx, fretX(chord.frets[s]), 0, 0];
+  });
+  // 画面の中心
+  const xs = Object.values(tipX);
+  const center = xs.length ? (Math.min(...xs)+Math.max(...xs))/2 : fretX(1.5);
+  return {H, fingers, thumb:[T0,T1,T2,Tc], W, B:Bm, str, chord, target:[Math.min(Math.max(center,32),80), 8, 0]};
+}
+
+/* ---------- コードチェンジのアニメーション ---------- */
+let poseFrom = null, poseTo = null, tweenStart = 0, tweenDur = 450;
+function ease(t){ return t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+function currentPose(now){
+  if(!poseFrom) return poseTo;
+  const t = Math.min(1,(now-tweenStart)/tweenDur);
+  if(t>=1){ poseFrom = null; return poseTo; }
+  const e = ease(t), lift = Math.sin(Math.PI*t);
+  const A = poseFrom, Bp = poseTo;
+  const fingers = {};
+  for(let f=1; f<=4; f++){
+    const fa = A.fingers[f], fb = Bp.fingers[f];
+    const moved = vlen(sub(fa.pts[3], fb.pts[3])) > 0.5;
+    // 指を一度持ち上げてから次の場所へ
+    const pts = fa.pts.map((p,i)=>add(lerp3(p, fb.pts[i], e), moved ? mul(norm(add(mul(Bp.H.N,-1),[0,0,1])), lift*[0,6,11,14][i]) : [0,0,0]));
+    fingers[f] = {mode: t<.5 ? fa.mode : fb.mode, pts, string: fb.string};
+  }
+  return {
+    H: Bp.H, fingers,
+    thumb: A.thumb.map((p,i)=>lerp3(p, Bp.thumb[i], e)),
+    W: lerp3(A.W, Bp.W, e), B: A.B.map((p,i)=>lerp3(p, Bp.B[i], e)),
+    str: t<.5 ? A.str : Bp.str, chord: Bp.chord, target: lerp3(A.target, Bp.target, e)
+  };
+}
+
+/* =========================================================
+   3D描画（レイマーチング）
+   手は骨ごとの「先細りの円柱」を、なめらかにくっつけて作る（関節のふくらみ・指の股も自然に出る）
+   ========================================================= */
+const r2 = n => n.toFixed(2);
+const FRET_LIST = [1,2,3,4,5,6,7,8].map(fretX);
+const SHADER = `
+precision highp float;
+uniform vec2 uRes; uniform vec3 uCam, uFwd, uRight, uUp; uniform float uFl;
+uniform vec3 uJ[16]; uniform vec3 uTh[4]; uniform vec3 uW; uniform vec3 uB[4];
+uniform vec3 uN, uFw, uAx; uniform vec4 uStr[4]; uniform vec4 uMask; uniform float uCut; uniform vec4 uBound;
+
+float smin(float a,float b,float k){ float h=max(k-abs(a-b),0.)/k; return min(a,b)-h*h*k*.25; }
+float sdBox(vec3 p, vec3 b){ vec3 q=abs(p)-b; return length(max(q,0.))+min(max(q.x,max(q.y,q.z)),0.); }
+float sdCap(vec3 p, vec3 a, vec3 b, float r){ vec3 pa=p-a, ba=b-a; float h=clamp(dot(pa,ba)/dot(ba,ba),0.,1.); return length(pa-ba*h)-r; }
+float sdRC(vec3 p, vec3 a, vec3 b, float r1, float r2){
+  vec3 ba=b-a; float l2=dot(ba,ba); float rr=r1-r2; float a2=l2-rr*rr; float il2=1./l2;
+  vec3 pa=p-a; float y=dot(pa,ba); float z=y-l2;
+  vec3 xv=pa*l2-ba*y; float x2=dot(xv,xv); float y2=y*y*l2; float z2=z*z*l2;
+  float k=sign(rr)*rr*rr*x2;
+  if(sign(z)*a2*z2>k) return sqrt(x2+z2)*il2-r2;
+  if(sign(y)*a2*y2<k) return sqrt(x2+y2)*il2-r1;
+  return (sqrt(x2*a2*il2)+y*rr)*il2-r1;
+}
+${[1,2,3,4].map(f=>{ const i=f-1, R=RAD[f]; return `
+float finger${i}(vec3 p){
+  float d1=sdRC(p,uJ[${i*4}],uJ[${i*4+1}],${r2(R[0])},${r2(R[1])});
+  float d2=sdRC(p,uJ[${i*4+1}],uJ[${i*4+2}],${r2(R[1])},${r2(R[2])});
+  float d3=sdRC(p,uJ[${i*4+2}],uJ[${i*4+3}],${r2(R[2])},${r2(R[3])});
+  return smin(smin(d1,d2,3.),d3,2.5);
+}`;}).join('')}
+float palmD(vec3 p){
+  float d=sdRC(p,uB[0],uJ[0],12.5,10.6);
+  d=smin(d,sdRC(p,uB[1],uJ[4],13.,10.9),13.);
+  d=smin(d,sdRC(p,uB[2],uJ[8],12.5,10.4),13.);
+  d=smin(d,sdRC(p,uB[3],uJ[12],11.5,9.2),13.);
+  vec3 w2=uW-uFw*75.;
+  d=smin(d,sdRC(p,uW-uAx*11.,w2-uAx*12.,15.,17.),14.);
+  d=smin(d,sdRC(p,uW+uAx*11.,w2+uAx*12.,15.,17.),14.);
+  d=smin(d,sdRC(p,uTh[0],uTh[1],${r2(THUMB_RAD[0])},${r2(THUMB_RAD[1])}),14.);
+  return d;
+}
+float thumbD(vec3 p){
+  return smin(sdRC(p,uTh[1],uTh[2],${r2(THUMB_RAD[1])},${r2(THUMB_RAD[2])}), sdRC(p,uTh[2],uTh[3],${r2(THUMB_RAD[2])},${r2(THUMB_RAD[3])}),2.5);
+}
+float handD(vec3 p){
+  float pb=length(p-uBound.xyz)-uBound.w;
+  if(pb>4.) return pb;
+  float palm=palmD(p);
+  float d=smin(palm,thumbD(p),7.);
+  if(uMask.x>.5) d=min(d,smin(palm,finger0(p),5.));
+  if(uMask.y>.5) d=min(d,smin(palm,finger1(p),5.));
+  if(uMask.z>.5) d=min(d,smin(palm,finger2(p),5.));
+  if(uMask.w>.5) d=min(d,smin(palm,finger3(p),5.));
+  return d;
+}
+${[0,1,2,3].map(i=>{ const sp=(i-1.5), r=STRING_R[i]; return `
+float str${i}(vec3 p){
+  vec4 s=uStr[${i}];
+  vec3 a=vec3(-70.,${r2(sp*9.4)},2.4), n=vec3(0.,${r2(sp*9.4)},${r2(STRING_TOP)}), far=vec3(420.,${r2(sp*14.6)},4.6);
+  if(s.x<0.) return min(sdCap(p,a,n,${r}),sdCap(p,n,far,${r}));
+  vec3 c=vec3(s.x,${r2(sp)}*(9.4+s.x*.0125),${r2(1.0+r)});
+  vec3 fr=vec3(s.y,${r2(sp)}*(9.4+s.y*.0125),${r2(1.25+r)});
+  return min(min(sdCap(p,a,n,${r}),sdCap(p,n,c,${r})),min(sdCap(p,c,fr,${r}),sdCap(p,fr,far,${r})));
+}`;}).join('')}
+vec2 mapScene(vec3 p){
+  float hw=17.5+max(p.x,0.)*.016;
+  float dB=max(max(abs(p.y)-hw,max(p.z,-5.-p.z)),max(-p.x,p.x-300.));
+  vec2 q=vec2(p.y/hw,(p.z+5.)/16.);
+  float dN=(length(q)-1.)*min(hw,16.)*.85; dN=max(dN,p.z+5.); dN=max(dN,max(-6.-p.x,p.x-300.));
+  float dH=sdBox(p-vec3(-50.,0.,-4.8),vec3(44.,22.,3.4))-1.2;
+  float dNut=sdBox(p-vec3(-3.,0.,-1.),vec3(2.7,hw,4.))-.3;
+  vec2 r=vec2(dB,1.);
+  if(dN<r.x) r=vec2(dN,2.);
+  if(dH<r.x) r=vec2(dH,6.);
+  if(dNut<r.x) r=vec2(dNut,4.);
+  float dF=1e5;
+  ${FRET_LIST.map(x=>`dF=min(dF,max(length(vec2(p.x-${r2(x)},p.z))-1.25,abs(p.y)-hw+.2));`).join('\n  ')}
+  if(dF<r.x) r=vec2(dF,3.);
+  if(p.z<10. && abs(p.y)<30.){
+    float ds=min(min(str0(p),str1(p)),min(str2(p),str3(p)));
+    if(ds<r.x) r=vec2(ds,5.);
+  } else r.x=min(r.x,max(p.z-8.,abs(p.y)-28.));
+  r.x=max(r.x,uCut-p.x);
+  return r;
+}
+vec2 map(vec3 p){
+  vec2 m=mapScene(p);
+  float h=handD(p);
+  if(h<m.x) m=vec2(h,10.);
+  return m;
+}
+vec3 calcN(vec3 p){
+  const vec2 e=vec2(.04,-.04);
+  return normalize(e.xyy*map(p+e.xyy).x+e.yyx*map(p+e.yyx).x+e.yxy*map(p+e.yxy).x+e.xxx*map(p+e.xxx).x);
+}
+// 影：ギターの面には手の影を落とす。手の上には、手どうしの影の代わりに「すき間の暗さ(AO)」で陰影をつける
+float softShadow(vec3 ro, vec3 rd, bool skin){
+  float res=1., t=skin?6.:3., ph=1e10, k=skin?2.5:8.;
+  for(int i=0;i<48;i++){
+    vec3 q=ro+rd*t;
+    float h=skin?mapScene(q).x:map(q).x;
+    float y=h*h/(2.*ph); float d=sqrt(max(h*h-y*y,0.));
+    res=min(res,k*d/max(t-y,.001)); ph=h;
+    t+=clamp(h,.4,14.);
+    if(res<.003||t>260.) break;
+  }
+  res=clamp(res,0.,1.);
+  return res*res*(3.-2.*res);
+}
+float calcAO(vec3 p, vec3 n){
+  float o=0., s=1.;
+  for(int i=1;i<=5;i++){ float h=1.6*float(i); o+=(h-map(p+n*h).x)*s; s*=.75; }
+  return clamp(1.-.11*o,0.,1.);
+}
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float vnoise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y); }
+float fbm(vec2 p){ float s=0., a=.5; for(int i=0;i<4;i++){ s+=a*vnoise(p); p*=2.03; a*=.5; } return s; }
+
+// 爪：末節の手の甲側
+float nailMask(vec3 p, vec3 P, vec3 D, vec3 T, float rt){
+  vec3 s=normalize(T-D); vec3 m=normalize(D-P);
+  vec3 dors=m-s*dot(m,s);
+  dors = length(dors)<.08 ? -uN : normalize(dors);
+  vec3 q=p-T; float al=dot(q,s); vec3 rad=q-s*al; float rl=length(rad);
+  if(rl>rt+2.5) return 0.;
+  float seg=length(T-D);
+  float c=dot(rad/max(rl,.001),dors);
+  float along=smoothstep(-seg*.62,-seg*.5,al)*(1.-smoothstep(rt*.35,rt*.75,al));
+  return smoothstep(.42,.62,c)*along;
+}
+// 関節のしわ（甲側の細い線）
+float crease(vec3 p, vec3 J, vec3 a, vec3 b){
+  vec3 ax=normalize(normalize(b-J)+normalize(J-a));
+  vec3 q=p-J; float al=dot(q,ax);
+  float rl=length(q-ax*al);
+  float g=exp(-al*al/8.)*smoothstep(4.,0.,abs(rl-9.)*0.4);
+  return g*(.5+.5*sin(al*3.2));
+}
+
+vec3 aces(vec3 x){ return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.); }
+
+void main(){
+  vec2 uv=(gl_FragCoord.xy*2.-uRes)/uRes.y;
+  vec3 rd=normalize(uv.x*uRight+uv.y*uUp+uFl*uFwd);
+  vec3 ro=uCam;
+  float t=0., m=-1.;
+  for(int i=0;i<200;i++){
+    vec2 h=map(ro+rd*t);
+    if(h.x<.002*t+.01){ m=h.y; break; }
+    t+=h.x*.92;
+    if(t>1400.) break;
+  }
+  vec3 bg=mix(vec3(.035,.026,.02),vec3(.11,.075,.055),gl_FragCoord.y/uRes.y);
+  vec3 col=bg;
+  if(m>0.){
+    vec3 p=ro+rd*t, n=calcN(p);
+    vec3 L=normalize(vec3(-.35,-.6,.72));
+    vec3 key=vec3(1.,.93,.84)*2.1;
+    float ndl=dot(n,L);
+    float sh=m>9. ? 1. : softShadow(p+n*1.2,L,false);
+    float oc=calcAO(p,n);
+    vec3 amb=mix(vec3(.10,.07,.05),vec3(.30,.32,.40),clamp(.5+.5*dot(n,normalize(vec3(0.,-.4,.9))),0.,1.));
+    vec3 hv=normalize(L-rd);
+    float fres=pow(1.-max(dot(n,-rd),0.),4.);
+    bool cut=abs(p.x-uCut)<.08;
+    if(m>9.){
+      // 肌：光が少し透ける（赤みのある影）
+      vec3 alb=vec3(.62,.34,.22);
+      alb*=.97+.04*vnoise(p.xy*.8+p.z*.5);
+      float red=0.;
+      for(int i=0;i<4;i++){}
+      ${[0,1,2,3].map(i=>`red+=exp(-pow(length(p-uJ[${i*4+1}]),2.)/60.)+.6*exp(-pow(length(p-uJ[${i*4+2}]),2.)/40.)+.5*exp(-pow(length(p-uJ[${i*4}]),2.)/70.);`).join('\n      ')}
+      alb=mix(alb,vec3(.60,.26,.18),clamp(red*.3,0.,.45));
+      float nail=0.;
+      ${[0,1,2,3].map(i=>`if(uMask[${i}]>.5) nail=max(nail,nailMask(p,uJ[${i*4+1}],uJ[${i*4+2}],uJ[${i*4+3}],${r2(RAD[i+1][3])}));`).join('\n      ')}
+      nail=max(nail,nailMask(p,uTh[1],uTh[2],uTh[3],${r2(THUMB_RAD[3])}));
+      alb=mix(alb,vec3(.78,.50,.44),nail);
+      vec3 wrap=clamp(vec3((ndl+.55)/1.55,(ndl+.3)/1.3,(ndl+.22)/1.22),0.,1.);
+      vec3 shT=mix(vec3(.32,.10,.06),vec3(1.),sh);
+      col=alb*key*wrap*wrap*shT + alb*amb*oc*1.1;
+      float sp=pow(max(dot(n,hv),0.),mix(18.,90.,nail))*mix(.10,.55,nail)*sh;
+      col+=vec3(1.,.95,.9)*sp*key*.5 + vec3(.55,.6,.7)*fres*.22*oc;
+    } else {
+      vec3 alb; float spk=.05, spp=20.;
+      if(m<1.5){ // 指板（ローズウッド）
+        float g=fbm(vec2(p.x*.05,p.y*1.6+fbm(vec2(p.x*.02,p.y*.3))*3.));
+        alb=mix(vec3(.05,.025,.015),vec3(.16,.08,.04),g);
+        ${[3,5,7].map(n=>`if(length(p.xy-vec2(${r2(slotCenter(n))},0.))<3.2 && p.z>-.2) { alb=vec3(.75,.72,.66); spk=.4; spp=60.; }`).join('\n        ')}
+        if(cut) alb=vec3(.30,.16,.08);
+      } else if(m<2.5){ // ネック（マホガニー）
+        float g=fbm(vec2(p.x*.03,p.y*.15+p.z*.2));
+        alb=mix(vec3(.22,.10,.05),vec3(.38,.19,.09),g); spk=.25; spp=40.;
+        if(cut) alb=vec3(.52,.32,.17);
+      } else if(m<3.5){ alb=vec3(.55,.53,.5); spk=1.2; spp=80.; }   // フレット
+      else if(m<4.5){ alb=vec3(.82,.76,.62); spk=.2; }               // ナット
+      else if(m>5.5){ alb=mix(vec3(.08,.04,.02),vec3(.15,.07,.035),fbm(p.xy*vec2(.04,.5))); spk=.3; spp=50.; } // ヘッド
+      else { alb=vec3(.80,.77,.70); spk=.6; spp=50.; if(cut) alb=vec3(1.,.95,.8); } // 弦
+      col=alb*key*max(ndl,0.)*sh + alb*amb*oc;
+      col+=key*pow(max(dot(n,hv),0.),spp)*spk*sh;
+      if(m>2.5&&m<3.5) col+=vec3(.25,.22,.2)*fres*oc;
+      if(cut) col=alb*(.9+.3*max(ndl,0.));
+    }
+    col=mix(col,bg,smoothstep(500.,1300.,t));
+  }
+  col=aces(col*1.05);
+  col=pow(col,vec3(1./2.2));
+  vec2 vq=gl_FragCoord.xy/uRes; col*=.82+.18*pow(16.*vq.x*vq.y*(1.-vq.x)*(1.-vq.y),.25);
+  gl_FragColor=vec4(col,1.);
+}`;
+
+class Renderer{
+  constructor(canvas){
+    this.canvas = canvas;
+    const gl = this.gl = canvas.getContext('webgl',{antialias:false, preserveDrawingBuffer:true});
+    if(!gl){ this.ok = false; return; }
+    const sh = (type, src)=>{ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+      if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; };
+    const prog = gl.createProgram();
+    gl.attachShader(prog, sh(gl.VERTEX_SHADER, 'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}'));
+    gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, SHADER));
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+    gl.useProgram(prog);
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog,'a'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+    this.u = {};
+    ['uRes','uCam','uFwd','uRight','uUp','uFl','uJ','uTh','uW','uB','uN','uFw','uAx','uStr','uMask','uCut','uBound']
+      .forEach(n=>{ this.u[n] = gl.getUniformLocation(prog, n) || gl.getUniformLocation(prog, n+'[0]'); });
+    this.ok = true;
+  }
+  render(pose, cam, opts, scale){
+    const gl = this.gl, c = this.canvas, u = this.u;
+    const dpr = Math.min(window.devicePixelRatio||1, 2);
+    const w = Math.max(2, Math.round(c.clientWidth*dpr*scale)), h = Math.max(2, Math.round(c.clientHeight*dpr*scale));
+    if(c.width!==w || c.height!==h){ c.width = w; c.height = h; }
+    gl.viewport(0,0,w,h);
+    gl.uniform2f(u.uRes, w, h);
+    gl.uniform3fv(u.uCam, cam.pos); gl.uniform3fv(u.uFwd, cam.fwd); gl.uniform3fv(u.uRight, cam.right); gl.uniform3fv(u.uUp, cam.up);
+    gl.uniform1f(u.uFl, cam.fl);
+    const J = []; const all = [];
+    for(let f=1; f<=4; f++) pose.fingers[f].pts.forEach(p=>{ J.push(...p); all.push(p); });
+    gl.uniform3fv(u.uJ, J);
+    gl.uniform3fv(u.uTh, pose.thumb.flat()); gl.uniform3fv(u.uW, pose.W); gl.uniform3fv(u.uB, pose.B.flat());
+    gl.uniform3fv(u.uN, pose.H.N); gl.uniform3fv(u.uFw, pose.H.F); gl.uniform3fv(u.uAx, pose.H.A);
+    gl.uniform4fv(u.uStr, pose.str.flat());
+    gl.uniform4fv(u.uMask, opts.mask || [1,1,1,1]);
+    gl.uniform1f(u.uCut, opts.cut ?? -1e4);
+    all.push(...pose.thumb, pose.W, add(pose.W, mul(pose.H.F,-75)), ...pose.B);
+    const cen = mul(all.reduce((a,b)=>add(a,b),[0,0,0]), 1/all.length);
+    const rad = Math.max(...all.map(p=>vlen(sub(p,cen)))) + 22;
+    gl.uniform4f(u.uBound, cen[0], cen[1], cen[2], rad);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+}
+
+/* ---------- カメラ ---------- */
+const VIEWS = {
+  diag:  {pol:62, az:205, dist:205, up:[0,0,1],  name:'ななめ（手の形がいちばん分かりやすい）'},
+  self:  {pol:48, az:-90, dist:210, up:[0,0,1],  name:'自分目線（弾いている人の目から）'},
+  front: {pol:22, az:-80, dist:215, up:[0,-1,0], name:'正面（向かい合った先生から）'},
+  side:  {pol:80, az:160, dist:200, up:[0,0,1],  name:'横から（ボディ側から）'}
+};
+function makeCam(target, v, aspectFl){
+  const pol = v.pol*DEG, az = v.az*DEG;
+  const pos = add(target, mul([Math.sin(pol)*Math.cos(az), Math.sin(pol)*Math.sin(az), Math.cos(pol)], v.dist));
+  const fwd = norm(sub(target,pos));
+  const right = norm(cross(fwd, v.up));
+  const up = cross(right, fwd);
+  return {pos, fwd, right, up, fl: aspectFl || 2.6};
+}
+function project(cam, p, W, H){
+  const q = sub(p, cam.pos), z = dot(q, cam.fwd);
+  if(z <= 1) return null;
+  const x = dot(q, cam.right)/z*cam.fl, y = dot(q, cam.up)/z*cam.fl;
+  return [(x*H + W)/2, (H - y*H)/2];
+}
+
+/* ---------- メイン表示・横から図 ---------- */
+const state = {root:'C', type:'', view:'diag', mirror:false, badges:true, focus:0, vib:[0,0,0,0], orbit:null};
+const handCanvas = document.getElementById('handView');
+const sideCanvas = document.getElementById('sideView');
+let mainR = null, sideR = null;
+try{ mainR = new Renderer(handCanvas); sideR = new Renderer(sideCanvas); }
+catch(err){ console.error(err); mainR = null; }
+if(!mainR || !mainR.ok){
+  document.getElementById('mainWrap').innerHTML = '<p style="padding:30px;color:#c9b6a3">この端末では3D表示が使えません（WebGLが無効です）。</p>';
+}
+
+function currentView(){
+  const base = VIEWS[state.view];
+  return state.orbit ? {...base, ...state.orbit} : base;
+}
+function renderMain(now, scale){
+  if(!mainR || !mainR.ok) return;
+  const pose = currentPose(now);
+  const narrow = handCanvas.clientWidth < 640;
+  const v = {...currentView()}; if(narrow) v.dist *= 0.86;
+  const cam = makeCam(pose.target, v, 3.0);
+  mainR.render(pose, cam, {}, scale);
+  handCanvas.style.transform = state.mirror ? 'scaleX(-1)' : '';
+  // 文字のラベル（指番号・弦・フレット）
+  const W = handCanvas.clientWidth, H = handCanvas.clientHeight;
+  const P = p => { const q = project(cam, p, W, H); if(q && state.mirror) q[0] = W - q[0]; return q; };
+  let html = '';
+  const at = (q, cls, txt, style='') => { if(q && q[0]>-30 && q[0]<W+30 && q[1]>-30 && q[1]<H+30) html += `<div class="${cls}" style="left:${q[0].toFixed(1)}px;top:${q[1].toFixed(1)}px;${style}">${txt}</div>`; };
+  const chord = pose.chord;
+  for(let n=1; n<=5; n++) at(P([slotCenter(n), -halfW(slotCenter(n))-9, 0]), 'lab fret', n+'<small>フレット</small>');
+  for(let s=0; s<4; s++){
+    const open = chord.frets[s]===0;
+    at(P([-14, strY(s,0), STRING_TOP]), 'lab str'+(open?' open':''), STRING_NAMES[s]+(open?'<small>○</small>':''));
+  }
+  if(state.badges){
+    for(let f=1; f<=4; f++){
+      const F = pose.fingers[f]; if(F.mode==='hover') continue;
+      const tip = F.pts[3];
+      const q = P(add(tip, [0,0,RAD[f][3]+5]));
+      if(q) at([q[0], q[1]-20], 'fbadge', f, `background:${FINGER_COLORS[f]}`);
+    }
+  }
+  document.getElementById('mainOverlay').innerHTML = html;
+}
+function renderSide(now, scale){
+  if(!sideR || !sideR.ok) return;
+  const pose = currentPose(now);
+  const F = pose.fingers;
+  const active = [1,2,3,4].filter(f=>F[f].mode!=='hover');
+  const focus = active.includes(state.focus) ? state.focus : (active[0]||0);
+  let cut = -1e4, target = [fretX(1.5), 4, 2], mask = [1,1,1,1];
+  if(focus){
+    const fx = Math.min(F[focus].pts[3][0], F[focus].pts[2][0]);
+    cut = fx - 9;
+    target = [fx, 12, 2];
+    mask = [1,2,3,4].map(f=> f===focus ? 1 : 0);
+  }
+  const cam = makeCam(target, {pol:78, az:180, dist:420, up:[0,0,1]}, 8.5);
+  sideR.render(pose, cam, {cut, mask}, scale);
+  const lab = document.getElementById('sideOverlay');
+  const W = sideCanvas.clientWidth, H = sideCanvas.clientHeight;
+  let html = '';
+  for(let s=0; s<4; s++){
+    const q = project(cam, [cut+0.5, strY(s,cut), STRING_TOP+6], W, H);
+    if(q) html += `<div class="lab str" style="left:${q[0].toFixed(1)}px;top:${(q[1]-6).toFixed(1)}px">${STRING_NAMES[s]}</div>`;
+  }
+  if(focus) html += `<div class="sidetag" style="background:${FINGER_COLORS[focus]}">${focus} ${FINGER_NAMES[focus]}</div>`;
+  else html += `<div class="sidetag" style="background:#ffd36b">どこも押さえません</div>`;
+  lab.innerHTML = html;
+}
+
+/* =========================================================
+   縦のコード表
+   ========================================================= */
+function renderDiagram(chord){
+  const el = document.getElementById('diagram');
+  const L=28, T=40, W=94, H=150, cols=4, rows=5;
+  const sx = i => L + i*W/(cols-1), sy = j => T + j*H/rows;
+  let s = `<rect width="150" height="210" rx="10" fill="#f6ece0"/>`;
+  s += `<text x="75" y="22" text-anchor="middle" font-size="16" font-weight="800" fill="#1b1410">${chord.name}</text>`;
+  for(let j=0;j<=rows;j++) s += `<line x1="${L}" x2="${L+W}" y1="${sy(j)}" y2="${sy(j)}" stroke="#555" stroke-width="${j?1.4:5}"/>`;
+  for(let i=0;i<cols;i++){
+    s += `<line x1="${sx(i)}" x2="${sx(i)}" y1="${T}" y2="${T+H}" stroke="#333" stroke-width="1.6"/>`;
+    s += `<text x="${sx(i)}" y="${T+H+16}" text-anchor="middle" font-size="11" fill="#555">${STRING_NAMES[i]}</text>`;
+    if(chord.frets[i]===0) s += `<circle cx="${sx(i)}" cy="${T-10}" r="5" fill="none" stroke="#333" stroke-width="1.6"/>`;
+  }
+  if(chord.barre){
+    const b = chord.barre, y = (sy(b.fret-1)+sy(b.fret))/2;
+    s += `<rect x="${sx(b.from)-9}" y="${y-9}" width="${sx(b.to)-sx(b.from)+18}" height="18" rx="9" fill="${FINGER_COLORS[1]}"/>`;
+  }
+  chord.frets.forEach((fr,i)=>{
+    if(!fr) return;
+    const f = chord.fingers[i];
+    if(chord.barre && f===1 && fr===chord.barre.fret) {
+      s += `<text x="${sx(i)}" y="${(sy(fr-1)+sy(fr))/2+4.5}" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1410">1</text>`;
+      return;
+    }
+    const y = (sy(fr-1)+sy(fr))/2;
+    s += `<circle cx="${sx(i)}" cy="${y}" r="9.5" fill="${FINGER_COLORS[f]}" stroke="#1b1410" stroke-width="1.2"/>`;
+    s += `<text x="${sx(i)}" y="${y+4.5}" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1410">${f}</text>`;
+  });
+  el.innerHTML = s;
+}
+
+/* =========================================================
+   押さえ方の説明文
+   ========================================================= */
+function renderSteps(chord){
+  const ul = document.getElementById('steps');
+  const items = [];
+  const done = {};
+  // 指番号の小さい順
+  const list = [];
+  chord.fingers.forEach((f,s)=>{ if(f) list.push({f,s,fret:chord.frets[s]}); });
+  list.sort((a,b)=>a.f-b.f || a.s-b.s);
+  for(const it of list){
+    if(done[it.f]) continue;
+    done[it.f] = true;
+    if(chord.barre && it.f===1 && it.fret===chord.barre.fret){
+      const b = chord.barre;
+      const strs = [];
+      for(let i=b.from;i<=b.to;i++) strs.push(STRING_NUM[i]);
+      items.push(`<li data-f="1"><span class="badge" style="background:${FINGER_COLORS[1]}">1</span><div><b>人差し指</b>を寝かせて、<b>${b.fret}フレット</b>の <b>${strs[0]}〜${strs[strs.length-1]}</b>（${STRING_NAMES[b.from]}〜${STRING_NAMES[b.to]}）をまとめて押さえる</div></li>`);
+      continue;
+    }
+    const strings = list.filter(x=>x.f===it.f).map(x=>x.s);
+    items.push(`<li data-f="${it.f}"><span class="badge" style="background:${FINGER_COLORS[it.f]}">${it.f}</span><div><b>${FINGER_NAMES[it.f]}</b>で <b>${STRING_NUM[strings[0]]}（${STRING_NAMES[strings[0]]}）</b>の <b>${it.fret}フレット</b></div></li>`);
+  }
+  const opens = chord.frets.map((v,i)=>v===0?i:-1).filter(i=>i>=0);
+  if(opens.length){
+    items.push(`<li class="open"><span class="badge" style="background:#ffd36b">○</span><div>${opens.map(i=>`${STRING_NUM[i]}（${STRING_NAMES[i]}）`).join('・')} は<b>押さえずに鳴らす</b></div></li>`);
+  }
+  ul.innerHTML = items.join('');
+  ul.querySelectorAll('li[data-f]').forEach(li=>li.onclick=()=>{ state.focus = +li.dataset.f; markFocus(); kick(); });
+  state.focus = list.length ? list[0].f : 0;
+  markFocus();
+
+  // コツ
+  const tips = [];
+  if(!list.length) tips.push('<strong>どこも押さえない</strong>コードです。左手は軽くネックに添えるだけでOK。');
+  if(chord.barre) tips.push('<strong>セーハ：</strong>人差し指をまっすぐ伸ばし、指の腹より少し親指側（骨の硬いところ）で押さえると音が出やすいです。親指はネックの裏でしっかり支えます。');
+  if(list.length && !chord.barre) tips.push('<strong>指を立てる：</strong>第一関節を曲げて、指先で真上から押さえると、となりの弦に触れずにきれいに鳴ります。');
+  if(list.length) tips.push('<strong>フレットのすぐ近く：</strong>金属の棒（フレット）のすぐ左側を押さえると、弱い力でもビビりません。');
+  const fingersUsed = new Set(chord.fingers.filter(Boolean)).size;
+  if(fingersUsed>=3) tips.push('<strong>置く順番：</strong>遠い弦（4弦側）を押さえる指から先に置くと、手の形が作りやすいです。');
+  tips.push('<strong>確認：</strong>「1本ずつ鳴らす」で、こもった音の弦がないかチェックしましょう。');
+  document.getElementById('tips').innerHTML = tips.join('<br>');
+
+  // むずかしさ
+  let lv = 1;
+  if(fingersUsed>=2) lv=2;
+  if(fingersUsed>=3) lv=3;
+  if(chord.barre) lv = Math.max(lv,4);
+  if(chord.barre && fingersUsed>=3) lv=5;
+  document.getElementById('difficulty').textContent = 'むずかしさ ' + '★'.repeat(lv) + '☆'.repeat(5-lv);
+}
+
+function markFocus(){
+  document.querySelectorAll('#steps li[data-f]').forEach(li=>li.classList.toggle('focus', +li.dataset.f===state.focus));
+}
+
+/* =========================================================
+   音（カープラス・ストロング法でウクレレっぽい音を合成）
+   ========================================================= */
+let actx = null, master = null;
+const bufCache = {};
+function ensureAudio(){
+  if(!actx){
+    actx = new (window.AudioContext||window.webkitAudioContext)();
+    master = actx.createGain(); master.gain.value = 0.7;
+    const body = actx.createBiquadFilter(); body.type='peaking'; body.frequency.value=260; body.Q.value=1.2; body.gain.value=5;
+    const lp = actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=5200;
+    master.connect(body); body.connect(lp); lp.connect(actx.destination);
+  }
+  if(actx.state==='suspended') actx.resume();
+}
+// 決まった乱数
+function rng(seed){ return ()=>{ seed=(seed*16807)%2147483647; return (seed-1)/2147483646; }; }
+function pluckBuffer(midi){
+  if(bufCache[midi]) return bufCache[midi];
+  const sr = actx.sampleRate, freq = 440*Math.pow(2,(midi-69)/12);
+  const len = Math.floor(sr*2.4);
+  const N = Math.max(2, Math.round(sr/freq - 0.5));
+  const buf = actx.createBuffer(1, len, sr), y = buf.getChannelData(0);
+  const r = rng(midi*13+5);
+  let prev = 0;
+  for(let i=0;i<N;i++){ const v = r()*2-1; prev = prev*0.5 + v*0.5; y[i] = prev; }
+  const decay = 0.9965;
+  for(let i=N;i<len;i++) y[i] = decay*0.5*(y[i-N] + y[i-N-1 >= 0 ? i-N-1 : 0]);
+  // 頭のノイズを少し整える
+  let mx = 0; for(let i=0;i<len;i++) mx = Math.max(mx, Math.abs(y[i]));
+  for(let i=0;i<len;i++) y[i] /= (mx||1);
+  bufCache[midi] = buf; return buf;
+}
+function playString(si, fret, when, vol){
+  const midi = STRING_MIDI[si] + fret;
+  const src = actx.createBufferSource(); src.buffer = pluckBuffer(midi);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(vol, when+0.004);
+  g.gain.exponentialRampToValueAtTime(0.0008, when+2.3);
+  src.connect(g); g.connect(master); src.start(when); src.stop(when+2.4);
+  const delayMs = (when-actx.currentTime)*1000;
+  setTimeout(()=>{ state.vib[si] = performance.now(); kick(); }, Math.max(0,delayMs));
+}
+function strum(chord, gap=0.028){
+  ensureAudio();
+  const t = actx.currentTime + 0.02;
+  // 4弦 → 1弦（ダウンストローク）
+  for(let si=0; si<4; si++) playString(si, chord.frets[si], t+si*gap, 0.32);
+}
+function arpeggio(chord){
+  ensureAudio();
+  const t = actx.currentTime + 0.02;
+  for(let si=0; si<4; si++) playString(si, chord.frets[si], t+si*0.45, 0.4);
+}
+function click(when, accent){
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.frequency.value = accent? 1500 : 1000;
+  g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(accent?0.25:0.15, when+0.002);
+  g.gain.exponentialRampToValueAtTime(0.0001, when+0.06);
+  o.connect(g); g.connect(actx.destination); o.start(when); o.stop(when+0.08);
+}
+
+/* =========================================================
+   画面の組み立て・操作
+   ========================================================= */
+const chordName = () => state.root + state.type;
+function setChord(name, animate=true){
+  const chord = getChord(name);
+  if(!chord) return;
+  const [root, type] = splitName(name);
+  state.root = root; state.type = type;
+  const now = performance.now();
+  const next = computePose(chord);
+  if(animate && poseTo){ poseFrom = currentPose(now); tweenStart = now; }
+  else poseFrom = null;
+  poseTo = next;
+  document.getElementById('chordName').textContent = name;
+  const R = ROOTS.find(r=>r.id===root), T = TYPES.find(t=>t.id===type);
+  document.getElementById('chordReading').textContent = `${R.read}・${T.read}`;
+  renderSteps(chord);
+  renderDiagram(chord);
+  updateButtons();
+  kick();
+}
+function splitName(name){
+  const R = ROOTS.map(r=>r.id).sort((a,b)=>b.length-a.length).find(r=>name.startsWith(r));
+  return [R, name.slice(R.length)];
+}
+
+const rootRow = document.getElementById('rootRow'), typeRow = document.getElementById('typeRow');
+ROOTS.forEach(r=>{
+  const b = document.createElement('button'); b.className='root-btn'; b.textContent=r.id; b.dataset.root=r.id;
+  b.onclick = ()=>{ const t = getChord(r.id+state.type) ? state.type : ''; setChord(r.id+t); };
+  rootRow.appendChild(b);
+});
+TYPES.forEach(t=>{
+  const b = document.createElement('button'); b.textContent=t.label; b.dataset.type=t.id;
+  b.onclick = ()=>setChord(state.root+t.id);
+  typeRow.appendChild(b);
+});
+function updateButtons(){
+  rootRow.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.root===state.root));
+  typeRow.querySelectorAll('button').forEach(b=>{
+    b.classList.toggle('on', b.dataset.type===state.type);
+    b.disabled = !getChord(state.root+b.dataset.type);
+  });
+}
+
+document.getElementById('btnStrum').onclick = ()=>strum(getChord(chordName()));
+document.getElementById('btnArp').onclick = ()=>arpeggio(getChord(chordName()));
+function toggleBtn(id, key){
+  const b = document.getElementById(id);
+  b.onclick = ()=>{ state[key] = !state[key]; b.classList.toggle('on', state[key]); kick(); };
+}
+toggleBtn('btnBadges','badges');
+toggleBtn('btnMirror','mirror');
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>{
+  state.view = b.dataset.view; state.orbit = null;
+  document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('on', x===b));
+  document.getElementById('viewName').textContent = '・' + VIEWS[state.view].name;
+  kick();
+});
+// ドラッグで回す／タップで鳴らす
+(function(){
+  let start = null;
+  handCanvas.addEventListener('pointerdown', e=>{
+    const v = currentView();
+    start = {x:e.clientX, y:e.clientY, pol:v.pol, az:v.az, moved:false};
+    handCanvas.setPointerCapture(e.pointerId);
+  });
+  handCanvas.addEventListener('pointermove', e=>{
+    if(!start) return;
+    const dx = e.clientX-start.x, dy = e.clientY-start.y;
+    if(Math.hypot(dx,dy) > 6) start.moved = true;
+    if(!start.moved) return;
+    const sgn = state.mirror ? -1 : 1;
+    const minPol = VIEWS[state.view].up[2] ? 18 : 2;  // 真正面付近は回しにくいので制限
+    state.orbit = {az: start.az - dx*0.35*sgn, pol: Math.max(minPol, Math.min(88, start.pol - dy*0.3))};
+    interacting = true; kick();
+  });
+  const end = ()=>{
+    if(start && !start.moved) strum(getChord(chordName()));
+    start = null; if(interacting){ interacting = false; kick(); }
+  };
+  handCanvas.addEventListener('pointerup', end);
+  handCanvas.addEventListener('pointercancel', end);
+})();
+
+/* ---------- 進行練習 ---------- */
+const prog = {idx:0, running:false, list:PROGRESSIONS[0].chords, pos:0, beat:0, timer:null, nextTime:0, showPos:0, showBeat:-1};
+const progList = document.getElementById('progList'), progChords = document.getElementById('progChords');
+PROGRESSIONS.forEach((p,i)=>{
+  const b = document.createElement('button'); b.textContent = p.name;
+  b.onclick = ()=>{ prog.idx=i; prog.list=p.chords; prog.pos=0; stopProg(); renderProg(); setChord(prog.list[0]); };
+  progList.appendChild(b);
+});
+function renderProg(){
+  progList.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on', i===prog.idx));
+  const cur = prog.running ? prog.showPos : prog.pos;
+  const nextPos = (cur+1)%prog.list.length;
+  progChords.innerHTML = prog.list.map((c,i)=>{
+    let cls = 'pc';
+    if(prog.running && i===cur) cls+=' now';
+    if(prog.running && prog.showBeat===3 && i===nextPos) cls+=' next';
+    return `<div class="${cls}" data-i="${i}">${c}</div>`;
+  }).join('');
+  progChords.querySelectorAll('.pc').forEach(el=>el.onclick=()=>{ prog.pos=+el.dataset.i; setChord(prog.list[prog.pos]); renderProg(); });
+  document.querySelectorAll('#beats .beat').forEach((el,i)=>el.classList.toggle('on', prog.running && i===prog.showBeat));
+}
+const bpmEl = document.getElementById('bpm');
+bpmEl.oninput = ()=>{ document.getElementById('bpmVal').textContent = bpmEl.value; };
+function tickProg(){
+  if(!prog.running) return;
+  const spb = 60/(+bpmEl.value);
+  // 少し先まで予約しておく
+  while(prog.nextTime < actx.currentTime + 0.12){
+    const when = prog.nextTime;
+    const beat = prog.beat, pos = prog.pos;
+    const delay = Math.max(0,(when-actx.currentTime)*1000);
+    click(when, beat===0);
+    if(beat===0){
+      const chord = getChord(prog.list[prog.pos]);
+      setTimeout(()=>{ if(prog.running) setChord(chord.name); }, Math.max(0, delay-120));
+      strum(chord);
+    } else {
+      // 2〜4拍目も軽くストローク（ダウン・アップ風）
+      const chord = getChord(prog.list[prog.pos]);
+      const t0 = when;
+      for(let si=0;si<4;si++) playString(beat%2? 3-si : si, chord.frets[beat%2?3-si:si], t0+si*0.018, 0.16);
+    }
+    setTimeout(()=>{ if(prog.running){ prog.showPos = pos; prog.showBeat = beat; renderProg(); } }, delay);
+    prog.nextTime += spb;
+    prog.beat++;
+    if(prog.beat>=4){ prog.beat=0; prog.pos=(prog.pos+1)%prog.list.length; }
+  }
+}
+function startProg(){
+  ensureAudio();
+  prog.running = true; prog.beat = 0; prog.showPos = prog.pos; prog.showBeat = -1;
+  prog.nextTime = actx.currentTime + 0.15;
+  setChord(prog.list[prog.pos]);
+  document.getElementById('btnProg').textContent = '■ ストップ';
+  prog.timer = setInterval(tickProg, 25);
+  tickProg();
+}
+function stopProg(){
+  prog.running = false; clearInterval(prog.timer);
+  document.getElementById('btnProg').textContent = '▶ スタート';
+  renderProg();
+}
+document.getElementById('btnProg').onclick = ()=> prog.running ? stopProg() : startProg();
+
+/* ---------- 描画ループ（動いている時だけ描き直す） ---------- */
+let dirty = true, raf = 0, lowRes = false;
+var interacting = false;
+function kick(){ dirty = true; if(!raf) raf = requestAnimationFrame(loop); }
+function loop(now){
+  raf = 0;
+  const moving = !!poseFrom || interacting;
+  if(dirty || moving || lowRes){
+    // 動いている間は粗く、止まったらきれいに描き直す
+    const scale = moving ? 0.5 : 1;
+    renderMain(now, scale);
+    renderSide(now, moving ? 0.6 : 1);
+    lowRes = moving;
+    dirty = false;
+  }
+  if(moving || lowRes) raf = requestAnimationFrame(loop);
+}
+
+window.addEventListener('resize', kick);
+
+// キーボード：スペースで鳴らす
+document.addEventListener('keydown', e=>{
+  if(e.target.tagName==='INPUT') return;
+  if(e.code==='Space'){ e.preventDefault(); strum(getChord(chordName())); }
+});
+
+renderProg();
+setChord('C', false);
+</script>
+</body>
+</html>
