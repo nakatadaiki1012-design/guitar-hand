@@ -233,22 +233,23 @@ function toggleBtn(id, key){
 toggleBtn('btnBadges','badges');
 toggleBtn('btnGhost','ghost');
 // 右手の表示：いつも／演奏中だけ／なし
-document.querySelectorAll('[data-rmode]').forEach(b=>b.onclick = ()=>{
-  state.rightMode = b.dataset.rmode;
-  document.querySelectorAll('[data-rmode]').forEach(x=>x.classList.toggle('on', x===b));
-  kick();
-});
+document.getElementById('rmodeSel').onchange = e=>{ state.rightMode = e.target.value; kick(); };
 // 速さ（スロー再生）：テンポに掛け算する。演奏中に変えても途切れないようにつなぐ
-document.querySelectorAll('[data-speed]').forEach(b=>b.onclick = ()=>{
-  state.speed = +b.dataset.speed;
-  document.querySelectorAll('[data-speed]').forEach(x=>x.classList.toggle('on', x===b));
+document.getElementById('speedSel').onchange = e=>{
+  state.speed = +e.target.value;
   retime(prog, +bpmEl.value); retime(song, +songBpm.value);
-});
+};
 toggleBtn('btnMirror','mirror');
-document.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>{
-  document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('on', x===b));
-  document.getElementById('viewName').textContent = '・' + VIEWS[b.dataset.view].name;
-  if(view){ view.setView(b.dataset.view); kick(); }
+const viewSel = document.getElementById('viewSel');
+viewSel.onchange = ()=>{
+  document.getElementById('viewName').textContent = VIEWS[viewSel.value].name;
+  if(view){ view.setView(viewSel.value); kick(); }
+};
+// タブ（押さえ方／練習／曲デモ）
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick = ()=>{
+  document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on', x===b));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.id === 'tab-'+b.dataset.tab));
+  kick();
 });
 
 /* ---------- 共通の時計 ----------
@@ -272,21 +273,14 @@ function retime(o, bpm){                                    // テンポ・速�
 
 /* ---------- 進行練習 ---------- */
 const prog = {idx:0, running:false, list:PROGRESSIONS[0].chords, pos:0, timer:null, t0:0, e8:0.5, nextSlot:0, pat:2, hl:null};
-const progList = document.getElementById('progList'), progChords = document.getElementById('progChords');
-PROGRESSIONS.forEach((p,i)=>{
-  const b = document.createElement('button'); b.textContent = p.name;
-  b.onclick = ()=>{ prog.idx=i; prog.list=p.chords; prog.pos=0; stopProg(); renderProg(); setChord(prog.list[0]); };
-  progList.appendChild(b);
-});
-const patList = document.getElementById('patList');
-PATTERNS.forEach((p,i)=>{
-  const b = document.createElement('button'); b.textContent = p.name;
-  b.onclick = ()=>{ prog.pat = i; renderProg(); kick(); };
-  patList.appendChild(b);
-});
+const progSel = document.getElementById('progSel'), progChords = document.getElementById('progChords');
+progSel.innerHTML = PROGRESSIONS.map((p,i)=>`<option value="${i}">${p.name}（${p.chords.join('→')}）</option>`).join('');
+progSel.onchange = ()=>{ const i = +progSel.value; prog.idx=i; prog.list=PROGRESSIONS[i].chords; prog.pos=0; stopProg(); renderProg(); setChord(prog.list[0]); };
+const patSel = document.getElementById('patSel');
+patSel.innerHTML = PATTERNS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
+patSel.value = 2;
+patSel.onchange = ()=>{ prog.pat = +patSel.value; renderProg(); kick(); };
 function renderProg(){
-  progList.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on', i===prog.idx));
-  patList.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on', i===prog.pat));
   progChords.innerHTML = prog.list.map((c,i)=>`<div class="pc" data-i="${i}">${c}</div>`).join('');
   progChords.querySelectorAll('.pc').forEach(el=>el.onclick=()=>{ if(prog.running) return; prog.pos=+el.dataset.i; setChord(prog.list[prog.pos]); });
   // ストロークの譜面（↓↑）
@@ -352,7 +346,7 @@ const song = {idx:0, running:false, timer:null, t0:0, e8:0.3, nextSlot:0, mel:0,
 const SONG = () => SONGS[song.idx];
 const songList = document.getElementById('songList'), songSheet = document.getElementById('songSheet');
 SONGS.forEach((sg,i)=>{
-  const b = document.createElement('button'); b.textContent = sg.title.replace(/（.*）/, '');
+  const b = document.createElement('button'); b.className = 'chip'; b.textContent = sg.short || sg.title;
   b.onclick = ()=>{ stopSong(); song.idx = i; songBpm.value = sg.bpm; document.getElementById('songBpmVal').textContent = sg.bpm; renderSong(); setChord(sg.bars[0][0][0]); };
   songList.appendChild(b);
 });
@@ -579,6 +573,7 @@ createView({
   view = v; window.__view = v;
   view.onChange(kick);
   document.getElementById('loading')?.remove();
+  document.getElementById('viewName').textContent = VIEWS[viewSel.value].name;
   setChord(state.root+state.type, false);
   window.__ready = true;
   // 残りのコードの手の形も、ひまな時間に先に計算しておく（切り替えが引っかからないように）

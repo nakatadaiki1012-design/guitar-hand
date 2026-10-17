@@ -215,7 +215,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
       }
     }
     if(mainOverlay._html !== html){ mainOverlay._html = html; mainOverlay.innerHTML = html; }   // 変わった時だけ書き換える
-    if(opts.skipSide) return;
+    if(opts.skipSide || sideCanvas.clientWidth === 0) return;   // 輪切り図が見えていない時は描かない
 
     // ---- 輪切り図 ----
     const fingers = pose.fingers;
