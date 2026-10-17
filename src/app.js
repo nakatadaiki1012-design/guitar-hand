@@ -7,7 +7,7 @@ window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
 import { PATTERNS, strumState, STRUM_AMP } from './strum.js';
 
-const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, focus:0, vib:[0,0,0,0]};
+const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false, focus:0, vib:[0,0,0,0]};
 let view = null, rig = null;
 let poseFrom = null, poseTo = null, tweenStart = 0;
 let TWEEN_MS = 450, tweenDur = 450;
@@ -49,33 +49,12 @@ function renderDiagram(chord){
    押さえ方の説明文
    ========================================================= */
 function renderSteps(chord){
-  const ul = document.getElementById('steps');
-  const items = [];
-  const done = {};
-  // 指番号の小さい順
-  const list = [];
-  chord.fingers.forEach((f,s)=>{ if(f) list.push({f,s,fret:chord.frets[s]}); });
-  list.sort((a,b)=>a.f-b.f || a.s-b.s);
-  for(const it of list){
-    if(done[it.f]) continue;
-    done[it.f] = true;
-    if(chord.barre && it.f===1 && it.fret===chord.barre.fret){
-      const b = chord.barre;
-      const strs = [];
-      for(let i=b.from;i<=b.to;i++) strs.push(STRING_NUM[i]);
-      items.push(`<li data-f="1"><span class="badge" style="background:${FINGER_COLORS[1]}">1</span><div><b>人差し指</b>を寝かせて、<b>${b.fret}フレット</b>の <b>${strs[0]}〜${strs[strs.length-1]}</b>（${STRING_NAMES[b.from]}〜${STRING_NAMES[b.to]}）をまとめて押さえる</div></li>`);
-      continue;
-    }
-    const strings = list.filter(x=>x.f===it.f).map(x=>x.s);
-    items.push(`<li data-f="${it.f}"><span class="badge" style="background:${FINGER_COLORS[it.f]}">${it.f}</span><div><b>${FINGER_NAMES[it.f]}</b>で <b>${STRING_NUM[strings[0]]}（${STRING_NAMES[strings[0]]}）</b>の <b>${it.fret}フレット</b></div></li>`);
-  }
-  const opens = chord.frets.map((v,i)=>v===0?i:-1).filter(i=>i>=0);
-  if(opens.length){
-    items.push(`<li class="open"><span class="badge" style="background:#ffd36b">○</span><div>${opens.map(i=>`${STRING_NUM[i]}（${STRING_NAMES[i]}）`).join('・')} は<b>押さえずに鳴らす</b></div></li>`);
-  }
-  ul.innerHTML = items.join('');
-  ul.querySelectorAll('li[data-f]').forEach(li=>li.onclick=()=>{ state.focus = +li.dataset.f; markFocus(); kick(); });
-  state.focus = list.length ? list[0].f : 0;
+  // 輪切り図で見る指を選ぶボタン（押さえる指だけ）
+  const el = document.getElementById('steps');
+  const list = [...new Set(chord.fingers.filter(Boolean))].sort();
+  el.innerHTML = list.map(f=>`<button data-f="${f}" style="background:${FINGER_COLORS[f]}">${f} ${FINGER_NAMES[f]}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{ state.focus = +b.dataset.f; markFocus(); kick(); });
+  state.focus = list.length ? list[0] : 0;
   markFocus();
 
   // コツ
@@ -86,7 +65,7 @@ function renderSteps(chord){
   if(list.length) tips.push('<strong>フレットのすぐ近く：</strong>金属の棒（フレット）のすぐ左側を押さえると、弱い力でもビビりません。');
   const fingersUsed = new Set(chord.fingers.filter(Boolean)).size;
   if(fingersUsed>=3) tips.push('<strong>置く順番：</strong>遠い弦（4弦側）を押さえる指から先に置くと、手の形が作りやすいです。');
-  tips.push('<strong>確認：</strong>「1本ずつ鳴らす」で、こもった音の弦がないかチェックしましょう。');
+  tips.push('<strong>確認：</strong>1本ずつ弾いて、こもった音の弦がないかチェックしましょう。');
   document.getElementById('tips').innerHTML = tips.join('<br>');
 
   // むずかしさ
@@ -99,7 +78,7 @@ function renderSteps(chord){
 }
 
 function markFocus(){
-  document.querySelectorAll('#steps li[data-f]').forEach(li=>li.classList.toggle('focus', +li.dataset.f===state.focus));
+  document.querySelectorAll('#steps button').forEach(b=>b.classList.toggle('focus', +b.dataset.f===state.focus));
 }
 
 /* =========================================================
@@ -232,8 +211,6 @@ function updateButtons(){
   });
 }
 
-document.getElementById('btnStrum').onclick = ()=>strum(getChord(chordName()));
-document.getElementById('btnArp').onclick = ()=>arpeggio(getChord(chordName()));
 function toggleBtn(id, key){
   const b = document.getElementById(id);
   b.onclick = ()=>{ state[key] = !state[key]; b.classList.toggle('on', state[key]); kick(); };
@@ -241,18 +218,32 @@ function toggleBtn(id, key){
 toggleBtn('btnBadges','badges');
 toggleBtn('btnGhost','ghost');
 // 右手の表示：いつも／演奏中だけ／なし
-document.getElementById('rmodeSel').onchange = e=>{ state.rightMode = e.target.value; kick(); };
+segment('rmodeSeg', v=>{ state.rightMode = v; });
 // 速さ（スロー再生）：テンポに掛け算する。演奏中に変えても途切れないようにつなぐ
-document.getElementById('speedSel').onchange = e=>{
-  state.speed = +e.target.value;
-  retime(prog, +bpmEl.value); retime(song, +songBpm.value);
-};
+segment('speedSeg', v=>{ state.speed = +v; retime(prog, +bpmEl.value); retime(song, +songBpm.value); });
 toggleBtn('btnMirror','mirror');
-const viewSel = document.getElementById('viewSel');
-viewSel.onchange = ()=>{
-  document.getElementById('viewName').textContent = VIEWS[viewSel.value].name;
-  if(view){ view.setView(viewSel.value); kick(); }
+// ボタンの切り替え（ひとつだけ選べるグループ）
+function segment(id, fn){
+  const el = document.getElementById(id);
+  el.querySelectorAll('button').forEach(b=>b.onclick = ()=>{
+    el.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
+    fn(b.dataset.v); kick();
+  });
+}
+let viewNameNow = 'diag';
+segment('viewSeg', v=>{ viewNameNow = v; document.getElementById('viewName').textContent = VIEWS[v].name; if(view) view.setView(v); });
+segment('view2Seg', v=>{ if(view) view.setView2(v); });
+document.getElementById('btnSplit').onclick = e=>{
+  state.split = !state.split;
+  e.currentTarget.classList.toggle('on', state.split);
+  document.getElementById('view2Bar').hidden = !state.split;
+  document.getElementById('handView').classList.toggle('split', state.split);
+  kick();
 };
+document.querySelectorAll('.swingBtn').forEach(b=>b.onclick = ()=>{
+  state.swing = !state.swing;
+  document.querySelectorAll('.swingBtn').forEach(x=>x.classList.toggle('on', state.swing));
+});
 // タブ（押さえ方／練習／曲デモ）
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick = ()=>{
   document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on', x===b));
@@ -273,6 +264,15 @@ function heardTime(){
   if(t < lastHeard) t = lastHeard;                          // 時計が戻らないように
   return (lastHeard = t);
 }
+/* スイング：「タッ・カ・タッ・カ」の、裏の8分音符を少し遅らせる。
+   u = まっすぐなリズムでの位置（8分音符単位）、warp(u) = スイングした時の時間の位置 */
+const SWING = 0.64;                                          // 1拍の中で裏拍が来る位置（0.5=まっすぐ、0.667=3連符）
+const swingR = () => state.swing ? SWING : 0.5;
+function warp(u){ const b = Math.floor(u/2), f = u/2 - b, r = swingR();
+  return 2*(b + (f < 0.5 ? f*2*r : r + (f-0.5)*2*(1-r))); }
+function unwarp(x){ const b = Math.floor(x/2), f = x/2 - b, r = swingR();
+  return 2*b + (f < r ? f/r : 1 + (f-r)/(1-r)); }
+const slotTime = (o, k) => o.t0 + warp(k)*o.e8;             // k番目の8分音符が鳴る時刻
 function retime(o, bpm){                                    // テンポ・速さを変えても、今の位置から続ける
   if(!o.running || !actx) return;
   const ct = actx.currentTime, ph = (ct - o.t0)/o.e8, e8 = eighth(bpm);
@@ -318,8 +318,8 @@ bpmEl.oninput = ()=>{
 function tickProg(){
   if(!prog.running) return;
   const P = PATTERNS[prog.pat].p;
-  while(prog.t0 + prog.nextSlot*prog.e8 < actx.currentTime + 0.12){
-    const k = prog.nextSlot, when = prog.t0 + k*prog.e8, slot = k%8;
+  while(slotTime(prog, prog.nextSlot) < actx.currentTime + 0.12){
+    const k = prog.nextSlot, when = slotTime(prog, k), slot = k%8;
     const pos = (prog.pos + Math.floor(k/8)) % prog.list.length;
     const chord = getChord(prog.list[pos]);
     if(slot%2===0) click(when, slot===0);
@@ -408,14 +408,15 @@ function tickSong(){
   const sg = SONG(), spb = sg.beats*2, total = sg.bars.length*spb;
   const ahead = actx.currentTime + 0.12;
   // メロディ
-  while(song.melodyOn && song.mel < song.notes.length && song.t0 + song.notes[song.mel].beat*2*song.e8 < ahead){
+  const nt = b => slotTime(song, b*2);                       // 拍 → 時刻（スイングも反映）
+  while(song.melodyOn && song.mel < song.notes.length && nt(song.notes[song.mel].beat) < ahead){
     const n = song.notes[song.mel++];
-    if(n.midi != null) playNote(n.midi, song.t0 + n.beat*2*song.e8, n.len*2*song.e8*0.95);
+    if(n.midi != null){ const a = nt(n.beat); playNote(n.midi, a, (nt(n.beat+n.len)-a)*0.95); }
   }
-  if(!song.melodyOn) while(song.mel < song.notes.length && song.t0 + song.notes[song.mel].beat*2*song.e8 < ahead) song.mel++;
+  if(!song.melodyOn) while(song.mel < song.notes.length && nt(song.notes[song.mel].beat) < ahead) song.mel++;
   // 伴奏
-  while(song.t0 + song.nextSlot*song.e8 < ahead){
-    const k = song.nextSlot, when = song.t0 + k*song.e8;
+  while(slotTime(song, song.nextSlot) < ahead){
+    const k = song.nextSlot, when = slotTime(song, k);
     const delay = Math.max(0,(when-actx.currentTime)*1000);
     song.nextSlot++;
     if(k < 0){                                   // カウント（1小節）
@@ -481,7 +482,7 @@ function musicPose(pl, ph){
   for(let j = k+1; j <= k+pl.spb && j < pl.end; j++){
     const nx = pl.chordAt(j);
     if(nx === cur) continue;
-    const left = (j - ph)*pl.o.e8;                          // 次のコードまでの秒数
+    const left = (warp(j) - warp(ph))*pl.o.e8;              // 次のコードまでの秒数
     const dur = Math.min(0.32, pl.o.e8*2*0.9);              // 動かす時間（最大でも1拍弱）
     if(left < dur){
       const t = 1 - left/dur;
@@ -532,7 +533,7 @@ function loop(now){
   raf = 0;
   if(!view || !poseTo) return;
   const pl = playing();
-  const ph = pl ? (heardTime() - pl.o.t0)/pl.o.e8 : 0;
+  const ph = pl ? unwarp((heardTime() - pl.o.t0)/pl.o.e8) : 0;   // 今どの8分音符か（スイングを戻して数える）
   const handMoving = !!poseFrom;
   const active = !!pl || !!oneShot;
   const showRight = state.rightMode === 'always' || (state.rightMode === 'playing' && active);
@@ -581,7 +582,7 @@ createView({
   view = v; window.__view = v;
   view.onChange(kick);
   document.getElementById('loading')?.remove();
-  document.getElementById('viewName').textContent = VIEWS[viewSel.value].name;
+  document.getElementById('viewName').textContent = VIEWS[viewNameNow].name;
   setChord(state.root+state.type, false);
   window.__ready = true;
   // 残りのコードの手の形も、ひまな時間に先に計算しておく（切り替えが引っかからないように）

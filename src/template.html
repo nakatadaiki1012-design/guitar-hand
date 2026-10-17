@@ -63,6 +63,17 @@
   .toolbar label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--sub)}
   .toolbar .sp{flex:1}
   .chip{padding:5px 9px;font-size:13px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;flex-wrap:wrap}
+  .seg button{border:0;border-radius:0;padding:5px 9px;font-size:13px;white-space:nowrap}
+  .seg button+button{border-left:1px solid var(--line)}
+  .tl{font-size:12px;color:var(--sub)}
+  #handView.split{aspect-ratio:2/1}
+  @media (max-width:640px){#handView.split{aspect-ratio:4/3} .seg button{padding:5px 7px;font-size:12px}}
+  .splitline{position:absolute;top:0;bottom:0;width:2px;background:#000;transform:translateX(-1px)}
+  .vname{position:absolute;top:6px;font-size:11px;color:var(--sub);background:#0008;padding:2px 7px;border-radius:999px}
+  .fpick{display:flex;gap:6px;margin:6px 0 0;flex-wrap:wrap}
+  .fpick button{padding:4px 10px;font-size:12px;font-weight:700;color:#1b1410;border:2px solid transparent}
+  .fpick button.focus{border-color:#fff}
   .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:6px;padding:0 2px}
   .legend span{display:inline-flex;align-items:center;gap:4px}
   .legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
@@ -146,23 +157,25 @@
     <div class="stage-head">
       <div id="chordName">C</div>
       <div><div id="chordReading">シー・メジャー</div><div id="difficulty"></div></div>
-      <div class="acts">
-        <button class="play" id="btnStrum" title="ジャラーンと鳴らす（スペースキーでも）">🔊 鳴らす</button>
-        <button id="btnArp" title="1本ずつ鳴らす">🎵 1本ずつ</button>
+    </div>
+    <div class="svgwrap" id="mainWrap"><canvas id="handView" aria-label="手の形（3D）"></canvas><div class="overlay" id="mainOverlay"></div><div class="hint">ドラッグで回転・ホイールで拡大・タップ／スペースキーで鳴る</div><div id="loading" class="loading">3Dの手を準備中…</div></div>
+    <div class="toolbar">
+      <div class="seg" id="viewSeg" title="見る向き（2画面の時は左側）">
+        <button data-v="diag" class="on">ななめ</button><button data-v="self">自分目線</button><button data-v="front">正面</button><button data-v="side">横から</button><button data-v="right">右手</button><button data-v="both">両手</button>
+      </div>
+      <button id="btnSplit" class="chip" title="2つの向きを並べて同時に表示">▥ 2画面</button>
+    </div>
+    <div class="toolbar" id="view2Bar" hidden>
+      <span class="tl">右の画面</span>
+      <div class="seg" id="view2Seg">
+        <button data-v="diag">ななめ</button><button data-v="self">自分目線</button><button data-v="front" class="on">正面</button><button data-v="side">横から</button><button data-v="right">右手</button><button data-v="both">両手</button>
       </div>
     </div>
-    <div class="svgwrap" id="mainWrap"><canvas id="handView" aria-label="手の形（3D）"></canvas><div class="overlay" id="mainOverlay"></div><div class="hint">ドラッグで回転・ホイールで拡大・タップで鳴る</div><div id="loading" class="loading">3Dの手を準備中…</div></div>
     <div class="toolbar">
-      <label>向き <select id="viewSel" title="見る向き">
-        <option value="diag">ななめ</option><option value="self">自分目線</option><option value="front">正面</option>
-        <option value="side">横から</option><option value="right">右手アップ</option><option value="both">両手</option>
-      </select></label>
-      <label>右手 <select id="rmodeSel" title="右手の表示">
-        <option value="always">いつも</option><option value="playing">演奏中だけ</option><option value="off">なし</option>
-      </select></label>
-      <label>速さ <select id="speedSel" title="再生の速さ（スロー再生）">
-        <option value="1">ふつう</option><option value="0.75">3/4</option><option value="0.5">1/2</option><option value="0.25">1/4</option>
-      </select></label>
+      <span class="tl">右手</span>
+      <div class="seg" id="rmodeSeg"><button data-v="always" class="on">表示</button><button data-v="playing">演奏中だけ</button><button data-v="off">なし</button></div>
+      <span class="tl">速さ</span>
+      <div class="seg" id="speedSeg"><button data-v="1" class="on">×1</button><button data-v="0.75">×¾</button><button data-v="0.5">×½</button><button data-v="0.25">×¼</button></div>
       <span class="sp"></span>
       <button id="btnGhost" class="chip on" title="手を半透明にして押さえる場所を見せる">半透明</button>
       <button id="btnBadges" class="chip on" title="指番号を表示">指番号</button>
@@ -192,11 +205,11 @@
       </nav>
 
       <div class="tab on" id="tab-how">
-        <ul class="steps" id="steps"></ul>
-        <div class="views">
+        <div class="views" style="margin-top:0">
           <div>
             <div class="svgwrap"><canvas id="sideView" aria-label="指のアーチ（断面）"></canvas><div class="overlay" id="sideOverlay"></div></div>
-            <p class="cap">ネックを輪切りにした図。指はアーチにして指先で押さえ、親指は裏に添えます。上の押さえ方をタップすると指を切り替え。</p>
+            <div class="fpick" id="steps"></div>
+            <p class="cap">ネックを輪切りにした図。指はアーチにして指先で押さえ、親指は裏に添えます。下の指のボタンで切り替え。</p>
           </div>
           <div><svg id="diagram" viewBox="0 0 150 210" aria-label="コード表"></svg><p class="cap">コード表</p></div>
         </div>
@@ -211,6 +224,7 @@
         <p class="cap" id="patTip"></p>
         <div class="runbar">
           <button class="play big" id="btnProg">▶ スタート</button>
+          <button class="chip swingBtn" title="裏拍を少し遅らせて「タッカ・タッカ」とはずませる">スイング</button>
           <span class="tempo">テンポ <input type="range" id="bpm" min="40" max="140" value="70"> <span id="bpmVal">70</span></span>
           <div class="beats" id="beats"><div class="beat"></div><div class="beat"></div><div class="beat"></div><div class="beat"></div></div>
         </div>
@@ -224,6 +238,7 @@
         <div class="runbar">
           <button class="play big" id="btnSong">▶ 演奏する</button>
           <button id="btnMelody" class="chip on">メロディ</button>
+          <button class="chip swingBtn" title="裏拍を少し遅らせて「タッカ・タッカ」とはずませる">スイング</button>
           <span class="tempo">テンポ <input type="range" id="songBpm" min="50" max="140" value="100"> <span id="songBpmVal">100</span></span>
         </div>
         <p class="cap">1小節カウントしてから始まります。向きを「両手」にすると両手の動きが見やすくなります。曲はどれも著作権の切れた曲です。</p>

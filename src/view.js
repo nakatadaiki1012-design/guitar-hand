@@ -11,12 +11,12 @@ import { slotCenter, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG } from './geo
 import { STRING_NAMES, FINGER_COLORS, FINGER_NAMES } from './data.js';
 
 export const VIEWS = {
-  diag:  {pol:50, az:-42, dist:260, up:[0,0,1],  name:'ななめ（手の形がいちばん分かりやすい）'},
-  self:  {pol:46, az:-90, dist:320, up:[0,0,1],  name:'自分目線（弾いている人の目から）'},
-  front: {pol:16, az:-80, dist:340, up:[0,-1,0], name:'正面（向かい合った先生から）'},
-  side:  {pol:78, az:160, dist:320, up:[0,0,1],  name:'横から（ボディ側から）'},
-  both:  {pol:44, az:-78, dist:720, up:[0,0,1],  name:'両手（全体を見る）', fixed:[150, 15, -10]},
-  right: {pol:62, az:-118, dist:400, up:[0,0,1],  name:'右手（ストロークを見る）', fixed:[STRUM_X, 0, 25]}
+  diag:  {label:'ななめ', pol:50, az:-42, dist:260, up:[0,0,1],  name:'ななめ（手の形がいちばん分かりやすい）'},
+  self:  {label:'自分目線', pol:46, az:-90, dist:320, up:[0,0,1],  name:'自分目線（弾いている人の目から）'},
+  front: {label:'正面', pol:16, az:-80, dist:340, up:[0,-1,0], name:'正面（向かい合った先生から）'},
+  side:  {label:'横から', pol:78, az:160, dist:320, up:[0,0,1],  name:'横から（ボディ側から）'},
+  both:  {label:'両手', pol:44, az:-78, dist:720, up:[0,0,1],  name:'両手（全体を見る）', fixed:[150, 15, -10]},
+  right: {label:'右手', pol:62, az:-118, dist:400, up:[0,0,1],  name:'右手（ストロークを見る）', fixed:[STRUM_X, 0, 25]}
 };
 
 export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverlay, onTap}){
@@ -160,6 +160,18 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     controls.addEventListener('change', ()=>requestRender && requestRender());
     controls.update();
   }
+  // 2画面表示：右半分にもう1つの向きを同時に出す（右側は向きのボタンで選ぶ。ドラッグで回せるのは左側）
+  const camera2 = new THREE.PerspectiveCamera(26, 1, 5, 4000);
+  let view2 = 'front';
+  const target2 = new THREE.Vector3();
+  function placeCam2(t){
+    const v = VIEWS[view2];
+    target2.copy(v.fixed ? new THREE.Vector3(...v.fixed) : t);
+    const pol = v.pol*DEG, az = v.az*DEG, d = v.dist*0.9;
+    camera2.up.set(...v.up);
+    camera2.position.copy(target2).add(new THREE.Vector3(Math.sin(pol)*Math.cos(az), Math.sin(pol)*Math.sin(az), Math.cos(pol)).multiplyScalar(d));
+    camera2.lookAt(target2);
+  }
   let requestRender = null;
   // タップ（ドラッグしなかった時）で音を鳴らす
   let down = null;
@@ -195,12 +207,29 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     }
     // ---- メイン ----
     clipPlane.constant = 1e5; clipFar.constant = 1e5; cap.visible = false;
-    const [W, H] = fit(renderer, camera, mainCanvas);
+    const [Wc, H] = fit(renderer, camera, mainCanvas);
     mainCanvas.style.transform = opts.mirror ? 'scaleX(-1)' : '';
-    renderer.render(scene, camera);
+    let W = Wc;
+    if(opts.split){
+      // 左右に分けて2つの向きを描く
+      W = Math.floor(Wc/2);
+      camera.aspect = W/H; camera.updateProjectionMatrix();
+      camera2.aspect = (Wc-W)/H; camera2.updateProjectionMatrix();
+      placeCam2(new THREE.Vector3(...pose.target));
+      renderer.setScissorTest(true);
+      renderer.setViewport(0, 0, W, H); renderer.setScissor(0, 0, W, H);
+      renderer.render(scene, camera);
+      renderer.setViewport(W, 0, Wc-W, H); renderer.setScissor(W, 0, Wc-W, H);
+      renderer.render(scene, camera2);
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, Wc, H);
+    } else {
+      if(Math.abs(camera.aspect - Wc/H) > 1e-3){ camera.aspect = Wc/H; camera.updateProjectionMatrix(); }
+      renderer.render(scene, camera);
+    }
     let html = '';
-    const P = p => { const q = project(camera, p, W, H); if(q && opts.mirror) q[0] = W - q[0]; return q; };
-    const at = (q, cls, txt, style='') => { if(q && q[0]>-30 && q[0]<W+30 && q[1]>-30 && q[1]<H+30) html += `<div class="${cls}" style="left:${q[0].toFixed(1)}px;top:${q[1].toFixed(1)}px;${style}">${txt}</div>`; };
+    const P = p => { const q = project(camera, p, W, H); if(q && opts.mirror) q[0] = Wc - q[0]; return q; };
+    const at = (q, cls, txt, style='') => { if(q && q[0]>-30 && q[0]<W-10 && q[1]>-30 && q[1]<H+30) html += `<div class="${cls}" style="left:${q[0].toFixed(1)}px;top:${q[1].toFixed(1)}px;${style}">${txt}</div>`; };
     const showLabels = !VIEWS[viewName].fixed;
     if(showLabels) for(let n=1; n<=5; n++) at(P([slotCenter(n), -halfW(slotCenter(n))-8, 0]), 'lab fret', n+'<small>フレット</small>');
     if(showLabels) for(let s=0; s<4; s++){
@@ -212,8 +241,13 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
         const F = pose.fingers[f]; if(F.mode==='hover') continue;
         const q = P(F.pts[3]);
         if(q) at([q[0], q[1]-30], 'fbadge', f, `background:${FINGER_COLORS[f]}`);
+        if(opts.split){   // 右側の画面にも指番号
+          const q2 = project(camera2, F.pts[3], Wc-W, H);
+          if(q2 && q2[0]>0 && q2[0]<Wc-W) html += `<div class="fbadge" style="left:${(q2[0]+W).toFixed(1)}px;top:${(q2[1]-30).toFixed(1)}px;background:${FINGER_COLORS[f]}">${f}</div>`;
+        }
       }
     }
+    if(opts.split) html += `<div class="splitline" style="left:${W}px"></div><div class="vname" style="left:${W+8}px">${VIEWS[view2].label||''}</div>`;
     if(mainOverlay._html !== html){ mainOverlay._html = html; mainOverlay.innerHTML = html; }   // 変わった時だけ書き換える
     if(opts.skipSide || sideCanvas.clientWidth === 0) return;   // 輪切り図が見えていない時は描かない
 
@@ -270,6 +304,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   setView('diag');
   return {
     render, setView, rig, rigR, rightHandPose,
+    setView2(name){ view2 = name; },
     debugCam(pos, look){ camera.position.set(...pos); controls.target.set(...look); controls.update(); },
     onChange(fn){ requestRender = fn; },
     get viewName(){ return viewName; }
