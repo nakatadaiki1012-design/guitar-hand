@@ -3,7 +3,7 @@
 // ・公開するのは dist/ の中だけ（リポジトリ全体や node_modules は上げない）
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ukulele-guide",
+  "name": "guitar-hand",
   "compatibility_date": "2026-10-12",
   "build": { "command": "npm run build" },
   "assets": { "directory": "./dist" }

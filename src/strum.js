@@ -2,16 +2,16 @@
    右手のストローク
    ・手の形：ピックを軽く持つような形。人差し指は軽く曲げるだけ（伸ばし気味）で、爪の背中側で弦をこする。中指〜小指はその後ろに軽く握り込む。
              親指の腹は人差し指の第一関節の横にそっと当てる
-   ・腕の向き：前腕はウクレレの尾側（ボディのおしり側）から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横で約90°）
+   ・腕の向き：前腕はギターの尾側（ボディのおしり側）から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横で約90°）
    ・動き　：腕は止めたまま、手の甲を軸にして指先側を回して弾く（手の甲はあまり動かない）
              ダウン（4弦→1弦）は人差し指の爪、アップ（1弦→4弦）は指の腹で弦をこする
    ・弾かない拍（空ピッキング）でも手は止めず、弦から少し浮かせて振り続ける
    ========================================================= */
-import { fretX, strY, stringZ, add, sub, mul, dot, cross, norm, vlen, DEG } from './geom.js';
+import { strY, stringZ, STRUM_X, add, sub, mul, dot, cross, norm, vlen, DEG } from './geom.js';
 import { jointName, THUMB_JOINTS } from './handrig.js';
 import { makeThumbModel, solveThumbTo } from './thumb.js';
 
-export const STRUM_X = fretX(16.5);          // 弾く場所：ネックとボディのつなぎ目あたり
+export { STRUM_X };                          // 弾く場所（geom.js：アコギはサウンドホールの上、エレキはピックアップの間）
 export const STRUM_AMP = 0.30;               // 振りの大きさ（ラジアン）
 
 const CFG = {
@@ -23,7 +23,7 @@ const CFG = {
   rollBias: -12,                             // 構えの時から、前腕を小指側へ少しひねっておく（度）
   armFollow: 0,                              // 弦の上の動きのうち、腕ごと動く割合（0：腕は止めて、手の甲を軸に回して弾く）
   backDepth: 14,                             // 回す軸：手の甲の表面（骨から甲側へ何mmか）
-  elbow: [0.84, -0.30, -0.45],               // 手首→ひじの向き：前腕はウクレレの尾側から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横）
+  elbow: [0.84, -0.30, -0.45],               // 手首→ひじの向き：前腕はギターの尾側から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横）
 };
 
 const R3 = (axis, a, v) => { const k = norm(axis), c = Math.cos(a), s = Math.sin(a);
@@ -112,8 +112,9 @@ export function rightHandPose(rig, st){
   const th = (reach - follow) / rHit;
   const rotP = p => add(add(pivot, R3(ax, th, sub(p, pivot))), [0, follow, 0]);
   const hitR = rotP(add(W, toWb(hit)));
-  // 弦の上（4本の幅）では指先を弦の面に合わせ、外側では弧を描いて自然に弦から離れる
-  const onStr = 1 - Math.min(1, Math.max(0, (Math.abs(hitR[1]) - 12)/14));
+  // 弦の上（6本の幅）では指先を弦の面に合わせ、外側では弧を描いて自然に弦から離れる
+  const span = Math.abs(strY(0, STRUM_X));
+  const onStr = 1 - Math.min(1, Math.max(0, (Math.abs(hitR[1]) - span)/14));
   const corr = (stringZ(STRUM_X) + 0.4 - hitR[2])*onStr;
   const off = [0, 0, corr + Math.max(0, stringZ(STRUM_X) + 0.4 - hitR[2] - corr) + st.lift];   // 表板の方へは沈み込まない
   const place = p => add(rotP(p), off);

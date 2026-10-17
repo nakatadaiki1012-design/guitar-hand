@@ -2,7 +2,7 @@
    コード → 手の形（逆運動学）
    骨の長さ・指の付け根の位置は、手の3Dモデルの実寸をそのまま使う
    ========================================================= */
-import { fretX, halfW, strY, FRET_TOP, NECK_BACK_Z, stringZ,
+import { fretX, halfW, strY, FRET_TOP, NECK_BACK_Z, stringZ, NSTR,
          add, sub, mul, dot, cross, vlen, norm, lerp, lerp3, DEG } from './geom.js';
 import { jointName, THUMB_JOINTS } from './handrig.js';
 import { makeThumbModel, solveThumb, neckSD } from './thumb.js';
@@ -231,6 +231,7 @@ function buildHand(chord, rig, prm, thumbStart){
 const PRM_STEP = {pitch:8, yaw:8, roll:8, yK:5, zK:5, dx1:4, dx2:4, dx3:4, dx4:4};
 const PRM_LIM  = {pitch:[-45,45], yaw:[-35,35], roll:[-35,35], yK:[18,64], zK:[-42,2], dx1:[-24,4], dx2:[-24,4], dx3:[-24,4], dx4:[-24,4]};
 const poseCache = new Map();
+export const clearPoseCache = () => poseCache.clear();   // ギターの種類を変えた時は計算し直す
 function localSearch(chord, rig, prm, pressing, scales){
   let best = buildHand(chord, rig, prm), thStart = best.th.ang;
   for(const scale of scales){
@@ -298,8 +299,8 @@ export function computePose(chord, rig){
   }
 
   // 弦：押さえたところで指板側へ沈む
-  const str = [0,1,2,3].map(s=>{
-    if(!chord.frets[s]) return null;
+  const str = Array.from({length:NSTR}, (_,s)=>{
+    if(!(chord.frets[s] > 0)) return null;
     const f = chord.fingers[s];
     const cx = (barre && f===1 && chord.frets[s]===barre.fret) ? fretX(barre.fret)-6 : tipX[f];
     return {contact: cx, fret: fretX(chord.frets[s])};
@@ -307,7 +308,7 @@ export function computePose(chord, rig){
   const xs = Object.values(tipX);
   const center = xs.length ? (Math.min(...xs)+Math.max(...xs))/2 : fretX(1.5);
   window.__thumbInfo = {ang: th.ang, cost: th.cost, total: hb.cost, prm: hb.prm, parts: hb.parts, ms: performance.now()-t0};
-  return {joints, fingers, str, chord, target:[Math.min(Math.max(center,30),80), 10, -4]};
+  return {joints, fingers, str, chord, target:[Math.min(Math.max(center,40),fretX(9)), 10, -4]};
 }
 
 /* ---------- コードチェンジのアニメーション ---------- */

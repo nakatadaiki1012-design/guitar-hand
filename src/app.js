@@ -1,20 +1,21 @@
 /* =========================================================
-   ウクレレ・ハンドガイド（画面の操作・音・説明）
+   ギター・ハンドガイド（画面の操作・音・説明）
    ========================================================= */
 import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, PROGRESSIONS, CHORDS, SONGS } from './data.js';
-import { computePose, blendPose, HAND_CFG } from './pose.js';
+import { computePose, blendPose, HAND_CFG, clearPoseCache } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
 import { BACKDROPS } from './backdrop.js';
-import { FINISHES } from './uke.js';
+import { FINISHES } from './guitar.js';
+import { GUITARS, NSTR } from './geom.js';
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 
-const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false, vib:[0,0,0,0],
-               bg:'day', finish:'mahogany', chart:true};
+const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
+               bg:'day', guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst'}, chart:true, leftHand:true};
 // 設定は次に開いた時も同じになるように覚えておく（覚えられない端末ではそのまま）
-const SAVED = ['mirror','badges','ghost','rightMode','split','bg','finish','chart'];
-try{ const sv = JSON.parse(localStorage.getItem('ukeSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
-const saveSettings = () => { try{ localStorage.setItem('ukeSettings', JSON.stringify(Object.fromEntries(SAVED.map(k=>[k, state[k]])))); }catch(e){} };
+const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand'];
+try{ const sv = JSON.parse(localStorage.getItem('guitarSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
+const saveSettings = () => { try{ localStorage.setItem('guitarSettings', JSON.stringify(Object.fromEntries(SAVED.map(k=>[k, state[k]])))); }catch(e){} };
 let view = null, rig = null;
 let poseFrom = null, poseTo = null, tweenStart = 0;
 let TWEEN_MS = 450, tweenDur = 450;
@@ -23,7 +24,7 @@ let TWEEN_MS = 450, tweenDur = 450;
    縦のコード表
    ========================================================= */
 function diagramSVG(chord){
-  const L=28, T=40, W=94, H=150, cols=4, rows=5;
+  const L=22, T=40, W=106, H=150, cols=NSTR, rows=5;
   const sx = i => L + i*W/(cols-1), sy = j => T + j*H/rows;
   let s = `<rect width="150" height="210" rx="10" fill="#faf8f3"/>`;
   s += `<text x="75" y="26" text-anchor="middle" font-size="24" font-weight="800" fill="#1b1410">${chord.name}</text>`;
@@ -32,13 +33,14 @@ function diagramSVG(chord){
     s += `<line x1="${sx(i)}" x2="${sx(i)}" y1="${T}" y2="${T+H}" stroke="#333" stroke-width="1.6"/>`;
     s += `<text x="${sx(i)}" y="${T+H+16}" text-anchor="middle" font-size="11" fill="#555">${STRING_NAMES[i]}</text>`;
     if(chord.frets[i]===0) s += `<circle cx="${sx(i)}" cy="${T-10}" r="5" fill="none" stroke="#333" stroke-width="1.6"/>`;
+    if(chord.frets[i]<0) s += `<path d="M${sx(i)-4.5} ${T-14.5}l9 9m0 -9l-9 9" stroke="#333" stroke-width="1.8"/>`;
   }
   if(chord.barre){
     const b = chord.barre, y = (sy(b.fret-1)+sy(b.fret))/2;
     s += `<rect x="${sx(b.from)-9}" y="${y-9}" width="${sx(b.to)-sx(b.from)+18}" height="18" rx="9" fill="${FINGER_COLORS[1]}"/>`;
   }
   chord.frets.forEach((fr,i)=>{
-    if(!fr) return;
+    if(!(fr > 0)) return;
     const f = chord.fingers[i];
     if(chord.barre && f===1 && fr===chord.barre.fret) {
       s += `<text x="${sx(i)}" y="${(sy(fr-1)+sy(fr))/2+4.5}" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1410">1</text>`;
@@ -64,17 +66,25 @@ function showStrip(names, soon=false){
 }
 
 /* =========================================================
-   音（カープラス・ストロング法でウクレレっぽい音を合成）
+   音（カープラス・ストロング法でギターっぽい音を合成。アコギは胴鳴り、エレキは少し明るく）
    ========================================================= */
 let actx = null, master = null;
+const tone = {};
+function setTone(){
+  if(!actx) return;
+  const el = state.guitar === 'electric';
+  tone.body.frequency.value = el ? 900 : 120; tone.body.gain.value = el ? 2 : 6;   // アコギは低い胴鳴り
+  tone.lp.frequency.value = el ? 4200 : 6500;
+}
 const bufCache = {};
 function ensureAudio(){
   if(!actx){
     actx = new (window.AudioContext||window.webkitAudioContext)();
     master = actx.createGain(); master.gain.value = 0.7;
-    const body = actx.createBiquadFilter(); body.type='peaking'; body.frequency.value=260; body.Q.value=1.2; body.gain.value=5;
-    const lp = actx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=5200;
-    master.connect(body); body.connect(lp); lp.connect(actx.destination);
+    tone.body = actx.createBiquadFilter(); tone.body.type='peaking'; tone.body.Q.value=1.1;
+    tone.lp = actx.createBiquadFilter(); tone.lp.type='lowpass';
+    master.connect(tone.body); tone.body.connect(tone.lp); tone.lp.connect(actx.destination);
+    setTone();
   }
   if(actx.state==='suspended') actx.resume();
 }
@@ -83,13 +93,13 @@ function rng(seed){ return ()=>{ seed=(seed*16807)%2147483647; return (seed-1)/2
 function pluckBuffer(midi){
   if(bufCache[midi]) return bufCache[midi];
   const sr = actx.sampleRate, freq = 440*Math.pow(2,(midi-69)/12);
-  const len = Math.floor(sr*2.4);
+  const len = Math.floor(sr*3);
   const N = Math.max(2, Math.round(sr/freq - 0.5));
   const buf = actx.createBuffer(1, len, sr), y = buf.getChannelData(0);
   const r = rng(midi*13+5);
   let prev = 0;
   for(let i=0;i<N;i++){ const v = r()*2-1; prev = prev*0.5 + v*0.5; y[i] = prev; }
-  const decay = 0.9965;
+  const decay = midi < 52 ? 0.998 : 0.9968;          // 低い弦は長く鳴る
   for(let i=N;i<len;i++) y[i] = decay*0.5*(y[i-N] + y[i-N-1 >= 0 ? i-N-1 : 0]);
   // 頭のノイズを少し整える
   let mx = 0; for(let i=0;i<len;i++) mx = Math.max(mx, Math.abs(y[i]));
@@ -101,8 +111,8 @@ function playString(si, fret, when, vol){
   const src = actx.createBufferSource(); src.buffer = pluckBuffer(midi);
   const g = actx.createGain();
   g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(vol, when+0.004);
-  g.gain.exponentialRampToValueAtTime(0.0008, when+2.3);
-  src.connect(g); g.connect(master); src.start(when); src.stop(when+2.4);
+  g.gain.exponentialRampToValueAtTime(0.0008, when+2.9);
+  src.connect(g); g.connect(master); src.start(when); src.stop(when+3);
   const delayMs = (when-actx.currentTime)*1000;
 }
 // ボタンで1回ジャラーン：右手もダウンストロークする（指が弦を通るタイミングで音を鳴らす）
@@ -114,14 +124,17 @@ function strum(chord){
   playStroke(chord, 'D', actx.currentTime + ONE_DOWN/2000, 0.32, 0.016);
   kick();
 }
-// ダウン（4弦→1弦）／アップ（1弦→4弦）
-function playStroke(chord, dir, when, vol, gap=0.012){
-  for(let k=0;k<4;k++){ const si = dir==='D' ? k : 3-k; playString(si, chord.frets[si], when + k*gap, vol); }
+// ダウン（6弦→1弦）／アップ（1弦→6弦。アップは高い方の弦だけ軽く）。×の弦は鳴らさない
+function playStroke(chord, dir, when, vol, gap=0.009){
+  const list = [];
+  for(let k=0;k<NSTR;k++){ const si = dir==='D' ? k : NSTR-1-k; if(chord.frets[si] >= 0 && (dir==='D' || si >= 2)) list.push(si); }
+  list.forEach((si,k)=>playString(si, chord.frets[si], when + k*gap, vol*0.8));
 }
 function arpeggio(chord){
   ensureAudio();
   const t = actx.currentTime + 0.02;
-  for(let si=0; si<4; si++) playString(si, chord.frets[si], t+si*0.45, 0.4);
+  let k = 0;
+  for(let si=0; si<NSTR; si++) if(chord.frets[si] >= 0) playString(si, chord.frets[si], t+(k++)*0.4, 0.4);
 }
 function click(when, accent){
   const o = actx.createOscillator(), g = actx.createGain();
@@ -229,10 +242,29 @@ function choiceRow(id, items, key, apply){
 }
 const BG_SW = {day:'#7fd3cc', sunset:'#f0805a', night:'#1f2d55', house:'#b0805a', meadow:'#6fa045'};
 choiceRow('optBg', Object.entries(BACKDROPS).map(([k,b])=>[k, b.label, BG_SW[k]]), 'bg', ()=>view && view.setBackdrop(state.bg));
-choiceRow('optFinish', Object.entries(FINISHES).map(([k,f])=>[k, f.label, f.paint || f.top.light]), 'finish', ()=>view && view.setFinish(state.finish));
+// ギターの種類（アコースティック／エレキ）と柄
+const FIN_SW = f => f.paint || (f.burst ? 'radial-gradient(#e8b25a 30%,#7a1c08 70%,#1a0804)' : f.top.light);
+function finishRow(){
+  const list = FINISHES[state.guitar];
+  state.finish = list[state.finishes[state.guitar]] ? state.finishes[state.guitar] : Object.keys(list)[0];
+  choiceRow('optFinish', Object.entries(list).map(([k,f])=>[k, f.label, FIN_SW(f)]), 'finish', ()=>{
+    state.finishes = {...state.finishes, [state.guitar]: state.finish};
+    view && view.setFinish(state.finish);
+  });
+}
+function applyGuitar(){
+  finishRow();
+  setTone();
+  if(!view) return;
+  view.setGuitar(state.guitar, state.finish);
+  clearPoseCache(); poseFrom = null; poseTo = null;
+  setChord(chordName(), false);
+}
+choiceRow('optGuitar', Object.entries(GUITARS).map(([k,gt])=>[k, gt.label]), 'guitar', ()=>{ if(prog.running) stopProg(); if(song.running) stopSong(); applyGuitar(); });
+finishRow();
 choiceRow('optRight', RMODES, 'rightMode', ()=>{});
 // オン・オフのボタン
-const TOGGLES = [['split','▥ 2画面'],['ghost','半透明'],['badges','指番号'],['mirror','左右反転'],['chart','コード表']];
+const TOGGLES = [['split','▥ 2画面'],['leftHand','左手'],['ghost','半透明'],['badges','指番号'],['mirror','左右反転'],['chart','コード表']];
 const showEl = document.getElementById('optShow');
 showEl.innerHTML = TOGGLES.map(([k,l])=>`<button data-k="${k}">${l}</button>`).join('');
 function applyToggles(){
@@ -330,7 +362,7 @@ progSel.innerHTML = PROGRESSIONS.map((p,i)=>`<option value="${i}">${p.name}（${
    Bb・A# → B♭、am → Am、M7 → maj7 のような書き方も受け付ける */
 const customRow = document.getElementById('customRow'), customIn = document.getElementById('customProg'), customMsg = document.getElementById('customMsg');
 let customList = ['C','Am','F','G7'];
-try{ const sv = JSON.parse(localStorage.getItem('ukeCustomProg') || 'null'); if(Array.isArray(sv) && sv.length) customList = sv; }catch(e){}
+try{ const sv = JSON.parse(localStorage.getItem('guitarCustomProg') || 'null'); if(Array.isArray(sv) && sv.length) customList = sv; }catch(e){}
 customIn.value = customList.join(' ');
 function normChord(t){
   const m = t.match(/^([a-gA-G])([#♯b♭]?)(.*)$/); if(!m) return null;
@@ -351,7 +383,7 @@ function readCustom(){
                                      : ok.length ? `${ok.length}小節をくり返します` : 'コードを書いてください';
   if(!ok.length) return;
   customList = ok;
-  try{ localStorage.setItem('ukeCustomProg', JSON.stringify(ok)); }catch(e){}
+  try{ localStorage.setItem('guitarCustomProg', JSON.stringify(ok)); }catch(e){}
   if(progSel.value === 'custom'){
     prog.list = customList; prog.pos %= ok.length; renderProg();
     if(!prog.running) setChord(prog.list[prog.pos]);
@@ -693,7 +725,7 @@ createView({
   view = v; window.__view = v;
   view.onChange(kick);
   document.getElementById('loading')?.remove();
-  view.setBackdrop(state.bg); view.setFinish(state.finish); applyToggles();
+  view.setBackdrop(state.bg); view.setGuitar(state.guitar, state.finish); applyToggles();
   setChord(state.root+state.type, false);
   window.__ready = true;
   // 残りのコードの手の形も、ひまな時間に先に計算しておく（切り替えが引っかからないように）

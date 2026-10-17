@@ -1,24 +1,59 @@
 /* =========================================================
-   ウクレレの寸法（単位 mm）
-   参考：Kala KA-C（コンサート）… 弦長381 / ボディ長281 / アッパー152 / ウエスト125 / ロワー210 / 厚み70 / 全長608
-   座標：x = ナット→ボディ方向 / y = 4弦(G・天井側)→1弦(A・床側) / z = 指板の表（客席側）
-   指板の表面が z=0、ボディの表板の表面が z=-5（指板の厚み5mm）
+   ギターの寸法（単位 mm）
+   アコースティック：ドレッドノート（Martin D-28 を参考）… 弦長645 / ナット幅44.5 / ボディ長508
+                     アッパー292 / ウエスト273 / ロワー397 / 厚み約115 / サウンドホール直径100 / 20フレット（14フレットでボディにつながる）
+   エレキ　　　　　：ストラトタイプ（Fender Stratocaster を参考）… 弦長648 / ナット幅42 / 22フレット
+                     ボディ長400・幅325・厚み45 / 3つのシングルコイル・トレモロブリッジ・6連ペグ
+   座標：x = ナット→ボディ方向 / y = 6弦(低いE・天井側)→1弦(高いE・床側) / z = 指板の表（客席側）
+   指板の表面が z=0、指板の厚みは FB_T（その下がネック）
+   ギターの種類を切り替えると、下の値（let）がまるごと入れ替わる（setGuitarType）
    ========================================================= */
-export const SCALE_LEN = 381;
-export const fretX = n => SCALE_LEN*(1-Math.pow(2,-n/12));     // 実物と同じフレット間隔
+export const NSTR = 6;                                          // 弦の本数
+export const GUITARS = {
+  acoustic: {
+    label:'アコースティック',
+    scale:645, nutHalf:22.25, halfSlope:0.0147,                // 指板の半幅（ナット44.5mm → 12F付近54mm）
+    sp0:7.2, spSlope:0.00558,                                   // 弦の間隔（ナット36mm → サドル54mm：両端の弦の間）
+    act0:1.7, actSlope:0.0057,                                  // 弦の高さ（指板の表から）
+    strR:[0.67,0.53,0.41,0.30,0.20,0.15],                       // 弦の太さ（半径・.012〜.053のライトゲージ）
+    wound:4,                                                    // 巻き弦の本数（6〜3弦）
+    fbT:6, neck0:15.5, neckSlope:0.0085, neckMaxX:360,          // 指板の厚み・ネックの厚み（指板の下）
+    bodyFret:14, frets:20, fbEndFret:20.6,
+    bodyLen:508, bodyDepth:115, topZ:-6,                        // ボディの表板の高さ（指板の下面と同じ）
+    headLen:190,
+  },
+  electric: {
+    label:'エレキ',
+    scale:648, nutHalf:21, halfSlope:0.0154,                    // ナット42mm → 12F付近52mm
+    sp0:7.0, spSlope:0.0054,                                    // ナット35mm → ブリッジ52.5mm
+    act0:1.6, actSlope:0.0045,                                  // エレキは弦が低い
+    strR:[0.58,0.45,0.33,0.215,0.165,0.127],                    // .010〜.046
+    wound:3,
+    fbT:6, neck0:15, neckSlope:0.005, neckMaxX:400,
+    bodyFret:16.9, frets:22, fbEndFret:22.6,
+    bodyLen:343, bodyDepth:45, topZ:-10,                        // ボディの表はネックの指板より10mm下（ネックをはめこむ）
+    headLen:195,
+  },
+};
+export let GTYPE = 'acoustic', G = GUITARS.acoustic;
+export let SCALE_LEN, FRET_TOP = 1.2, FB_T, NECK_BACK_Z, BODY_X0, BODY_LEN, BODY_DEPTH, BODY_TOP, FB_END, HEAD_LEN, NUM_FRETS, STRING_R, STRUM_X;
+export const fretX = n => G.scale*(1-Math.pow(2,-n/12));        // 実物と同じフレット間隔
 export const slotCenter = f => (fretX(f-1)+fretX(f))/2;
-export const halfW = x => 17.6 + Math.max(0,x)*0.0165;          // 指板の半幅（ナット35mm → 14F付近42mm）
-export const strY = (i,x) => (i-1.5)*(9.3 + Math.max(0,x)*0.0135);
-export const STRING_R = [0.35,0.45,0.4,0.33];                   // 弦の太さ（半径）
-export const stringZ = x => 2.0 + x*0.0063;                     // 開放弦の高さ（ナット2.0 → サドル4.4）
-export const FRET_TOP = 1.2;                                    // フレットの高さ
-export const NECK_DEPTH = x => 15.5 + Math.min(x,210)*0.017;    // ネックの厚み（指板の下）
-export const NECK_BACK_Z = -5 - NECK_DEPTH(40);                 // 1〜3フレットあたりのネック裏
-export const BODY_X0 = fretX(14);                               // ボディの始まり（14フレット）
-export const BODY_LEN = 281, BODY_DEPTH = 70;
-export const FB_END = fretX(18.6);                              // 指板の終わり
-export const HEAD_LEN = 117;
-export const NUM_FRETS = 18;
+export const halfW = x => G.nutHalf + Math.max(0,x)*G.halfSlope;   // 指板の半幅
+export const strY = (i,x) => (i-(NSTR-1)/2)*(G.sp0 + Math.max(0,x)*G.spSlope);
+export const stringZ = x => G.act0 + x*G.actSlope;               // 開放弦の高さ
+export const NECK_DEPTH = x => G.neck0 + Math.min(Math.max(0,x),G.neckMaxX)*G.neckSlope;   // ネックの厚み（指板の下）
+
+export function setGuitarType(t){
+  GTYPE = GUITARS[t] ? t : 'acoustic'; G = GUITARS[GTYPE];
+  SCALE_LEN = G.scale; FB_T = G.fbT; STRING_R = G.strR;
+  NECK_BACK_Z = -FB_T - NECK_DEPTH(40);                          // 1〜3フレットあたりのネック裏
+  BODY_X0 = fretX(G.bodyFret); BODY_LEN = G.bodyLen; BODY_DEPTH = G.bodyDepth; BODY_TOP = G.topZ;
+  FB_END = fretX(G.fbEndFret); HEAD_LEN = G.headLen; NUM_FRETS = G.frets;
+  // 右手で弾く場所：アコギはサウンドホールの上（指板の終わりのすぐ先）、エレキはフロントとセンターのピックアップの間
+  STRUM_X = GTYPE === 'electric' ? 520 : FB_END + 38;
+}
+setGuitarType('acoustic');
 
 /* ---------- ベクトル計算 ---------- */
 export const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];

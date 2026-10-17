@@ -1,5 +1,5 @@
 {
-  "name": "ukulele-guide",
+  "name": "guitar-hand",
   "private": true,
   "type": "module",
   "scripts": { "build": "node tools/build.mjs" },

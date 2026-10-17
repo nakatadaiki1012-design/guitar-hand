@@ -4,23 +4,23 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { buildUkulele } from './uke.js';
+import { buildGuitar } from './guitar.js';
 import { createBackdrop } from './backdrop.js';
 import { loadHand, applyPose } from './handrig.js';
-import { rightHandPose, STRUM_X } from './strum.js';
-import { slotCenter, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG } from './geom.js';
+import { rightHandPose } from './strum.js';
+import { slotCenter, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG, NSTR, STRUM_X, GTYPE, setGuitarType } from './geom.js';
 import { STRING_NAMES, FINGER_COLORS } from './data.js';
 
-/* ウクレレは演奏する時のように立てて持っている：
-   空（上）は -y（1弦Gの側）、指板の正面（客席）は +z、ボディは +x（弾く人から見て右）
+/* ギターは演奏する時のように立てて持っている：
+   空（上）は -y（6弦の側）、指板の正面（客席）は +z、ボディは +x（弾く人から見て右）
    カメラの向き：el = 見下ろす角度（水平が0°）、az = 正面(+z)からボディ側(+x)へ回した角度 */
 export const VIEWS = {
-  diag:  {label:'ななめ', el:31, az:42, dist:260,  name:'ななめ（手の形がいちばん分かりやすい）'},
-  self:  {label:'自分目線', el:58, az:6, dist:320,  name:'自分目線（上からのぞき込む）'},
-  front: {label:'正面', el:8, az:3, dist:340, name:'正面（向かい合った先生から）'},
-  side:  {label:'横から', el:14, az:-72, dist:320,  name:'横から（ヘッド側から）'},
-  both:  {label:'両手', el:12, az:12, dist:700,  name:'両手（全体を見る）', fixed:[150, 15, -10]},
-  right: {label:'右手', el:30, az:28, dist:540,  name:'右手（ストロークを見る）', fixed:[STRUM_X, 0, 25]}
+  diag:  {label:'ななめ', el:31, az:42, dist:300,  name:'ななめ（手の形がいちばん分かりやすい）'},
+  self:  {label:'自分目線', el:58, az:6, dist:370,  name:'自分目線（上からのぞき込む）'},
+  front: {label:'正面', el:8, az:3, dist:390, name:'正面（向かい合った先生から）'},
+  side:  {label:'横から', el:14, az:-72, dist:370,  name:'横から（ヘッド側から）'},
+  both:  {label:'全体', el:12, az:12, dist:1500,  name:'全体（ギターと両手）', fixed:()=>[300, 15, -30]},
+  right: {label:'右手', el:30, az:28, dist:600,  name:'右手（ストロークを見る）', fixed:()=>[STRUM_X, 0, 25]}
 };
 const UP = [0,-1,0];
 
@@ -45,18 +45,27 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   const key = new THREE.DirectionalLight('#fff6ea', 2.6);
   key.position.set(-160, -420, 380);   // 空の高い所（-y）・客席側（+z）から
   key.castShadow = true;
-  key.shadow.mapSize.set(1024, 1024);
-  Object.assign(key.shadow.camera, {left:-300, right:300, top:300, bottom:-300, near:50, far:1400});
-  key.target.position.set(150, 0, -40);
+  key.shadow.mapSize.set(2048, 2048);
+  Object.assign(key.shadow.camera, {left:-620, right:620, top:620, bottom:-620, near:50, far:1800});
+  key.target.position.set(320, 0, -50);
   key.shadow.bias = -0.0004; key.shadow.normalBias = 0.8;
   scene.add(key, key.target);
   const rim = new THREE.DirectionalLight('#ffd9b8', 0.6); rim.position.set(300, 200, 150); scene.add(rim);
   const backdrop = createBackdrop(scene, {hemi, key, rim}, [renderer]);
 
-  // ウクレレ
-  const uke = buildUkulele();
-  scene.add(uke.group);
-  uke.group.traverse(o=>{ if(o.material) o.material.envMapIntensity = 0.5; });
+  // ギター（アコースティック／エレキ。1回作ったら取っておいて、切り替える時は入れ替えるだけ）
+  const built = {};
+  let gtr = null, finishName = null;
+  function setGuitar(type, finish){
+    setGuitarType(type);
+    if(gtr && gtr.type === GTYPE){ if(finish) gtr.setFinish(finishName = finish); return; }
+    if(gtr) scene.remove(gtr.group);
+    gtr = built[GTYPE] ||= buildGuitar();
+    gtr.group.traverse(o=>{ if(o.material) o.material.envMapIntensity = 0.5; });
+    scene.add(gtr.group);
+    gtr.setFinish(finishName = finish);
+  }
+  setGuitar(GTYPE);
 
   // 手：肌は少し透明感のある質感（光が当たる縁がほんのり赤くなる）
   // （以前の「光沢の層を重ねる」質感は重いので、ふつうの質感＋赤みの足し算で似せる）
@@ -115,9 +124,9 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   const glowTex = (()=>{ const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
     const gr = g.createRadialGradient(32,32,0,32,32,32); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(.35,'rgba(255,255,255,.6)'); gr.addColorStop(1,'rgba(255,255,255,0)');
     g.fillStyle = gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
-  // 弦4本ぶんの印は最初に1回だけ作っておき、毎回は位置と色を変えるだけ（毎フレーム作り直すと重い）
+  // 弦6本ぶんの印は最初に1回だけ作っておき、毎回は位置と色を変えるだけ（毎フレーム作り直すと重い）
   const discGeo = new THREE.CircleGeometry(4.6, 32), ringGeo = new THREE.TorusGeometry(2.2, 0.45, 8, 28);
-  const markSet = [0,1,2,3].map(()=>{
+  const markSet = Array.from({length:NSTR}, ()=>{
     const disc = new THREE.Mesh(discGeo, markMats[1]); disc.renderOrder = 3;
     // 弦が指に当たって沈んでいるところ：光る輪（手を透かして見えるように、いちばん手前に描く）
     const ring = new THREE.Mesh(ringGeo, ringMats[1]); ring.rotation.y = Math.PI/2; ring.renderOrder = 10;
@@ -128,7 +137,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   });
   function placeMarks(pose, ghost){
     const chord = pose.chord;
-    for(let s=0;s<4;s++){
+    for(let s=0;s<NSTR;s++){
       const m = markSet[s], info = pose.str[s];
       m.disc.visible = m.ring.visible = m.glow.visible = !!info;
       if(!info) continue;
@@ -155,7 +164,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     const c = new OrbitControls(cam, mainCanvas);
     c.target.copy(tgt);
     c.enablePan = true; c.screenSpacePanning = true; c.panSpeed = 0.8;
-    c.minDistance = 120; c.maxDistance = 900;
+    c.minDistance = 120; c.maxDistance = 2200;
     c.rotateSpeed = 0.7; c.zoomSpeed = 0.8;
     c.touches = {ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN};
     c.addEventListener('change', ()=>requestRender && requestRender());
@@ -164,7 +173,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   }
   function placeCam(cam, tgt, name, scale=1){
     const v = VIEWS[name];
-    if(v.fixed) tgt.set(...v.fixed);
+    if(v.fixed) tgt.set(...v.fixed());
     const narrow = mainCanvas.clientWidth < 640;
     const d = v.dist * (narrow ? 0.92 : 1) * scale;
     const el = v.el*DEG, az = v.az*DEG;
@@ -231,7 +240,8 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     const pr = Math.max(0.75, Math.round(basePR*(opts.quality ?? 1)*20)/20);
     if(pr !== curPR){ curPR = pr; renderer.setPixelRatio(pr); }
     applyPose(rig, pose);
-    uke.setStrings(pose.str);
+    gtr.setStrings(pose.str);
+    rig.root.visible = opts.leftHand !== false;
     setGhost(!!opts.ghost);
     placeMarks(pose, !!opts.ghost);
     // 右手
@@ -269,9 +279,9 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     const at = (q, cls, txt, style='') => { if(q && q[0]>-30 && q[0]<W-10 && q[1]>-30 && q[1]<H+30) html += `<div class="${cls}" style="left:${q[0].toFixed(1)}px;top:${q[1].toFixed(1)}px;${style}">${txt}</div>`; };
     const showLabels = !VIEWS[viewName].fixed;
     if(showLabels) for(let n=1; n<=5; n++) at(P([slotCenter(n), -halfW(slotCenter(n))-8, 0]), 'lab fret', n+'<small>フレット</small>');
-    if(showLabels) for(let s=0; s<4; s++){
-      const open = pose.chord.frets[s]===0;
-      at(P([-9, strY(s,0), stringZ(0)+3]), 'lab str'+(open?' open':''), STRING_NAMES[s]+(open?'<small>○</small>':''));
+    if(showLabels) for(let s=0; s<NSTR; s++){
+      const fr = pose.chord.frets[s], open = fr===0, mute = fr<0;
+      at(P([-9, strY(s,0), stringZ(0)+3]), 'lab str'+(open?' open':'')+(mute?' mute':''), STRING_NAMES[s]+(open?'<small>○</small>':mute?'<small>×</small>':''));
     }
     if(opts.badges){
       for(let f=1; f<=4; f++){
@@ -294,7 +304,8 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     render, setView, rig, rigR, rightHandPose, get info(){ return renderer.info; },
     setView2,
     setBackdrop: name => backdrop.set(name),
-    setFinish: name => uke.setFinish(name),
+    setFinish: name => gtr.setFinish(finishName = name),
+    setGuitar,
     // 処理が重い端末向け：影を切る（いちど切ると戻さない）
     setShadows(on){
       if(key.castShadow === on) return;

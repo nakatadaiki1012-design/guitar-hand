@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>ウクレレ・ハンドガイド</title>
-<meta name="description" content="ウクレレのコードの押さえ方を、リアルな手の形で表示する練習アプリ">
+<title>ギター・ハンドガイド</title>
+<meta name="description" content="ギターのコードの押さえ方を、リアルな手の形で表示する練習アプリ（アコースティック／エレキ）">
 <style>
   :root{
     --bg:#f3f0ea; --panel:#ffffff; --panel2:#f6f4ef; --line:#e4ded3;
@@ -57,6 +57,7 @@
   .lab{font-weight:800;color:#f6ece0;font-size:14px;text-shadow:0 0 4px #000,0 0 8px #000}
   .lab small{font-size:10px;font-weight:400;color:#c9b6a3;margin-left:1px}
   .lab.open{color:#ffd36b}
+  .lab.mute{color:#ff9a8a}
   .fbadge{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#1d2a30;border:3px solid #fff;font-size:14px;box-shadow:0 2px 6px #0008}
   .loading{position:absolute;inset:0;display:grid;place-items:center;color:#55666e;font-size:14px}
   #mainWrap.split .hint{display:none}
@@ -204,7 +205,7 @@
 </head>
 <body>
 <header>
-  <h1>🌺 ウクレレ・<span>ハンドガイド</span></h1>
+  <h1>🎸 ギター・<span>ハンドガイド</span></h1>
   <p>押さえ方を3Dの手で</p>
 </header>
 
@@ -218,7 +219,7 @@
     <div class="svgwrap" id="mainWrap"><canvas id="handView" aria-label="手の形（3D）"></canvas><div class="overlay" id="mainOverlay"></div><div class="hint">回転：ドラッグ ／ 移動：2本指・右ドラッグ ／ 拡大：ピンチ・ホイール</div><div id="loading" class="loading">3Dの手を準備中…</div>
       <button class="vsel" id="angleBtn" title="押すたびに見る向きが変わります">🎥 ななめ</button>
       <button class="vsel vsel2" id="angle2Btn" title="右の画面の向き" hidden>🎥 正面</button>
-      <button class="gear" id="gearBtn" title="設定（背景・ウクレレの柄・表示）" aria-label="設定">⚙</button>
+      <button class="gear" id="gearBtn" title="設定（背景・ギター・表示）" aria-label="設定">⚙</button>
       <button class="gear fsbtn" id="fsBtn" title="全画面" aria-label="全画面">⛶</button>
       <!-- 全画面の時だけ：3D画面の下にコードのボタンと再生ボタンを重ねる -->
       <div class="picker fsbar" id="fsBar">
@@ -230,7 +231,8 @@
     <div class="settings" id="settings" hidden>
       <div class="set-head"><b>設定</b><button id="setClose" class="chip" aria-label="閉じる">✕</button></div>
       <div class="set-group"><span>背景</span><div class="opts" id="optBg"></div></div>
-      <div class="set-group"><span>ウクレレ</span><div class="opts" id="optFinish"></div></div>
+      <div class="set-group"><span>ギター</span><div class="opts" id="optGuitar"></div></div>
+      <div class="set-group"><span>柄</span><div class="opts" id="optFinish"></div></div>
       <div class="set-group"><span>右手</span><div class="opts" id="optRight"></div></div>
       <div class="set-group"><span>表示</span><div class="opts" id="optShow"></div></div>
     </div>
@@ -289,7 +291,7 @@
     </section>
   </div>
 </div>
-<footer>標準チューニング（G・C・E・A）。右利き用。手の大きさは平均的な大人（コンサートサイズのウクレレ）で計算しています。</footer>
+<footer>標準チューニング（E・A・D・G・B・E）。右利き用。手の大きさは平均的な大人で計算しています。</footer>
 
 <!--APP-->
 </body>

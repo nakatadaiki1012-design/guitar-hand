@@ -1,8 +1,8 @@
 /* =========================================================
    背景（実物の大きさ）：昼の砂浜・夕焼けの砂浜・夜の砂浜・海の家・野原
-   ウクレレは立てて構えている。空（上）は -y、客席（正面）は +z、
+   ギターは立てて構えている。空（上）は -y、客席（正面）は +z、
    弾く人の後ろ（-z）の先に波打ち際と海（野原では丘）、その先に地平線
-   単位はmm。地面はウクレレの約0.9m下（立って胸の前で構えた高さ）
+   単位はmm。地面はギターの約0.9m下（立って胸の前で構えた高さ）
    画像ファイルは使わず、その場で描いた絵を貼るだけ。選んだ時に初めて作り、あとは使い回す
    ========================================================= */
 import * as THREE from 'three';
@@ -12,7 +12,7 @@ const canvas = (w, h) => { const c = document.createElement('canvas'); c.width =
 const tex = (c, repeat) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   if(repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
 
-const GROUND_Y = 900;          // 地面の高さ（ウクレレの中心から下へ90cm）
+const GROUND_Y = 900;          // 地面の高さ（ギターの中心から下へ90cm）
 const SHORE_Z = -2600;         // 波打ち際（弾く人の後ろ2.6m）
 const NEAR_Z = 9000, FAR_Z = -16000, HALF_X = 16000;
 const vOf = z => (NEAR_Z - z)/(NEAR_Z - FAR_Z);   // z → 0（手前）〜1（奥）

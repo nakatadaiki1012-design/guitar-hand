@@ -7,7 +7,7 @@
    その中から「指の腹がネックの裏に軽く当たる」「ネックにめり込まない」
    「楽な形（力の抜けた形）に近い」ものを選ぶ
    ========================================================= */
-import { halfW, NECK_DEPTH, add, sub, mul, dot, cross, norm, vlen, DEG } from './geom.js';
+import { halfW, NECK_DEPTH, FB_T, add, sub, mul, dot, cross, norm, vlen, DEG } from './geom.js';
 
 const rot = (axis, a) => {            // 回転行列（ロドリゲスの式）
   const [x,y,z] = norm(axis), c = Math.cos(a), s = Math.sin(a), t = 1-c;
@@ -60,12 +60,12 @@ export function thumbFK(M, ang){
 }
 
 /* 手首の座標 → 実際の座標の変換（toW: 位置, toWd: 向き）と、ネックの形から、いちばん自然な角度をさがす */
-// ネックの表面からの距離（外側がプラス）。断面は指板の下が半楕円：中心(0,-5)、横の半径 hw、深さ dpt
+// ネックの表面からの距離（外側がプラス）。断面は指板の下が半楕円：中心(0,-FB_T)、横の半径 hw、深さ dpt
 export function neckSD(p){
   const hw = halfW(p[0]), dpt = NECK_DEPTH(p[0]);
   if(p[0] < -8) return 50;                                             // ヘッドより先は気にしない
-  if(p[2] > -5) return Math.max(Math.abs(p[1]) - hw, p[2]);            // 指板の高さ
-  const u = p[1]/hw, v = (p[2]+5)/dpt, r = Math.hypot(u,v);
+  if(p[2] > -FB_T) return Math.max(Math.abs(p[1]) - hw, p[2]);            // 指板の高さ
+  const u = p[1]/hw, v = (p[2]+FB_T)/dpt, r = Math.hypot(u,v);
   return (r-1)*Math.min(hw,dpt);
 }
 
