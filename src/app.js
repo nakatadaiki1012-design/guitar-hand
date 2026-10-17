@@ -10,7 +10,7 @@ import { PATTERNS, strumState, STRUM_AMP } from './strum.js';
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, focus:0, vib:[0,0,0,0]};
 let view = null, rig = null;
 let poseFrom = null, poseTo = null, tweenStart = 0;
-const TWEEN_MS = 450;
+let TWEEN_MS = 450, tweenDur = 450;
 
 /* =========================================================
    縦のコード表
@@ -188,18 +188,26 @@ function setChord(name, animate=true){
   if(!view) return;
   const now = performance.now();
   const next = computePose(chord, view.rig);
-  if(animate && poseTo){ poseFrom = currentPose(now); tweenStart = now; }
+  if(animate && poseTo){ poseFrom = currentPose(now); tweenStart = now; tweenDur = TWEEN_MS; }
   else poseFrom = null;
   poseTo = next; window.__pose = next;
   kick();
 }
 function currentPose(now){
   if(!poseFrom) return poseTo;
-  const t = Math.min(1, (now-tweenStart)/TWEEN_MS);
+  const t = Math.min(1, (now-tweenStart)/tweenDur);
   if(t>=1){ poseFrom = null; return poseTo; }
   return blendPose(poseFrom, poseTo, t);
 }
 window.setChord = setChord;
+// コードのボタンを押した時：手がすばやく次の形になり、押さえ終わると同時にジャラーンと鳴る
+function pickChord(name){
+  if(prog.running || song.running){ return; }              // 練習・曲デモの演奏中はコードを変えない
+  TWEEN_MS = 160;
+  setChord(name);
+  TWEEN_MS = 450;
+  strum(getChord(name));
+}
 function splitName(name){
   const R = ROOTS.map(r=>r.id).sort((a,b)=>b.length-a.length).find(r=>name.startsWith(r));
   return [R, name.slice(R.length)];
@@ -208,12 +216,12 @@ function splitName(name){
 const rootRow = document.getElementById('rootRow'), typeRow = document.getElementById('typeRow');
 ROOTS.forEach(r=>{
   const b = document.createElement('button'); b.className='root-btn'; b.textContent=r.id; b.dataset.root=r.id;
-  b.onclick = ()=>{ const t = getChord(r.id+state.type) ? state.type : ''; setChord(r.id+t); };
+  b.onclick = ()=>{ const t = getChord(r.id+state.type) ? state.type : ''; pickChord(r.id+t); };
   rootRow.appendChild(b);
 });
 TYPES.forEach(t=>{
   const b = document.createElement('button'); b.textContent=t.label; b.dataset.type=t.id;
-  b.onclick = ()=>setChord(state.root+t.id);
+  b.onclick = ()=>pickChord(state.root+t.id);
   typeRow.appendChild(b);
 });
 function updateButtons(){
