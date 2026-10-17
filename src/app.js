@@ -5,8 +5,9 @@ import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROO
 import { computePose, blendPose, HAND_CFG } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
+import { PATTERNS, strumState, STRUM_AMP } from './strum.js';
 
-const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, focus:0, vib:[0,0,0,0]};
+const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightOn:true, focus:0, vib:[0,0,0,0]};
 let view = null, rig = null;
 let poseFrom = null, poseTo = null, tweenStart = 0;
 const TWEEN_MS = 450;
@@ -142,13 +143,19 @@ function playString(si, fret, when, vol){
   g.gain.exponentialRampToValueAtTime(0.0008, when+2.3);
   src.connect(g); g.connect(master); src.start(when); src.stop(when+2.4);
   const delayMs = (when-actx.currentTime)*1000;
-  setTimeout(()=>{ state.vib[si] = performance.now(); kick(); }, Math.max(0,delayMs));
 }
-function strum(chord, gap=0.028){
+// ボタンで1回ジャラーン：右手もダウンストロークする（指が弦を通るタイミングで音を鳴らす）
+let oneShot = null;
+const ONE_DOWN = 170, ONE_BACK = 380;
+function strum(chord){
   ensureAudio();
-  const t = actx.currentTime + 0.02;
-  // 4弦 → 1弦（ダウンストローク）
-  for(let si=0; si<4; si++) playString(si, chord.frets[si], t+si*gap, 0.32);
+  oneShot = {start: performance.now()};
+  playStroke(chord, 'D', actx.currentTime + ONE_DOWN/2000, 0.32, 0.016);
+  kick();
+}
+// ダウン（4弦→1弦）／アップ（1弦→4弦）
+function playStroke(chord, dir, when, vol, gap=0.012){
+  for(let k=0;k<4;k++){ const si = dir==='D' ? k : 3-k; playString(si, chord.frets[si], when + k*gap, vol); }
 }
 function arpeggio(chord){
   ensureAudio();
@@ -225,6 +232,7 @@ function toggleBtn(id, key){
 }
 toggleBtn('btnBadges','badges');
 toggleBtn('btnGhost','ghost');
+toggleBtn('btnRight','rightOn');
 toggleBtn('btnMirror','mirror');
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>{
   document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('on', x===b));
@@ -233,15 +241,22 @@ document.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>{
 });
 
 /* ---------- 進行練習 ---------- */
-const prog = {idx:0, running:false, list:PROGRESSIONS[0].chords, pos:0, beat:0, timer:null, nextTime:0, showPos:0, showBeat:-1};
+const prog = {idx:0, running:false, list:PROGRESSIONS[0].chords, pos:0, timer:null, t0:0, e8:0.5, nextSlot:0, showPos:0, showBeat:-1, showSlot:-1, pat:2};
 const progList = document.getElementById('progList'), progChords = document.getElementById('progChords');
 PROGRESSIONS.forEach((p,i)=>{
   const b = document.createElement('button'); b.textContent = p.name;
   b.onclick = ()=>{ prog.idx=i; prog.list=p.chords; prog.pos=0; stopProg(); renderProg(); setChord(prog.list[0]); };
   progList.appendChild(b);
 });
+const patList = document.getElementById('patList');
+PATTERNS.forEach((p,i)=>{
+  const b = document.createElement('button'); b.textContent = p.name;
+  b.onclick = ()=>{ prog.pat = i; renderProg(); kick(); };
+  patList.appendChild(b);
+});
 function renderProg(){
   progList.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on', i===prog.idx));
+  patList.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on', i===prog.pat));
   const cur = prog.running ? prog.showPos : prog.pos;
   const nextPos = (cur+1)%prog.list.length;
   progChords.innerHTML = prog.list.map((c,i)=>{
@@ -252,49 +267,76 @@ function renderProg(){
   }).join('');
   progChords.querySelectorAll('.pc').forEach(el=>el.onclick=()=>{ prog.pos=+el.dataset.i; setChord(prog.list[prog.pos]); renderProg(); });
   document.querySelectorAll('#beats .beat').forEach((el,i)=>el.classList.toggle('on', prog.running && i===prog.showBeat));
+  // ストロークの譜面（↓↑）
+  const P = PATTERNS[prog.pat];
+  document.getElementById('patView').innerHTML = [...P.p].map((c,i)=>{
+    const on = prog.running && i===prog.showSlot ? ' on' : '';
+    const cnt = i%2===0 ? (i/2+1) : 'と';
+    return `<div class="st${on}${c==='-'?' ghost':''}"><b>${c==='D'?'↓':c==='U'?'↑':'・'}</b><small>${cnt}</small></div>`;
+  }).join('');
+  document.getElementById('patTip').textContent = P.tip;
 }
 const bpmEl = document.getElementById('bpm');
-bpmEl.oninput = ()=>{ document.getElementById('bpmVal').textContent = bpmEl.value; };
+bpmEl.oninput = ()=>{
+  document.getElementById('bpmVal').textContent = bpmEl.value;
+  if(prog.running){                       // 演奏中にテンポを変えても、手の振りがつながるように
+    const ct = actx.currentTime, ph = (ct - prog.t0)/prog.e8, e8 = 30/(+bpmEl.value);
+    prog.t0 = ct - ph*e8; prog.e8 = e8;
+  }
+};
+// 8分音符ごとに、音と表示を少し先まで予約する
 function tickProg(){
   if(!prog.running) return;
-  const spb = 60/(+bpmEl.value);
-  // 少し先まで予約しておく
-  while(prog.nextTime < actx.currentTime + 0.12){
-    const when = prog.nextTime;
-    const beat = prog.beat, pos = prog.pos;
+  const P = PATTERNS[prog.pat].p;
+  while(prog.t0 + prog.nextSlot*prog.e8 < actx.currentTime + 0.12){
+    const k = prog.nextSlot, when = prog.t0 + k*prog.e8, slot = k%8;
+    const pos = (prog.pos + Math.floor(k/8)) % prog.list.length;
+    const chord = getChord(prog.list[pos]);
     const delay = Math.max(0,(when-actx.currentTime)*1000);
-    click(when, beat===0);
-    if(beat===0){
-      const chord = getChord(prog.list[prog.pos]);
-      setTimeout(()=>{ if(prog.running) setChord(chord.name); }, Math.max(0, delay-120));
-      strum(chord);
-    } else {
-      // 2〜4拍目も軽くストローク（ダウン・アップ風）
-      const chord = getChord(prog.list[prog.pos]);
-      const t0 = when;
-      for(let si=0;si<4;si++) playString(beat%2? 3-si : si, chord.frets[beat%2?3-si:si], t0+si*0.018, 0.16);
-    }
-    setTimeout(()=>{ if(prog.running){ prog.showPos = pos; prog.showBeat = beat; renderProg(); } }, delay);
-    prog.nextTime += spb;
-    prog.beat++;
-    if(prog.beat>=4){ prog.beat=0; prog.pos=(prog.pos+1)%prog.list.length; }
+    if(slot%2===0) click(when, slot===0);
+    if(slot===0) setTimeout(()=>{ if(prog.running) setChord(chord.name); }, Math.max(0, delay-140));
+    const c = P[slot];
+    if(c==='D') playStroke(chord, 'D', when, slot===0 ? 0.34 : 0.28);
+    if(c==='U') playStroke(chord, 'U', when, 0.17);
+    setTimeout(()=>{ if(prog.running){ prog.showPos = pos; prog.showBeat = slot>>1; prog.showSlot = slot; renderProg(); } }, delay);
+    prog.nextSlot++;
   }
 }
 function startProg(){
   ensureAudio();
-  prog.running = true; prog.beat = 0; prog.showPos = prog.pos; prog.showBeat = -1;
-  prog.nextTime = actx.currentTime + 0.15;
+  prog.running = true; prog.showPos = prog.pos; prog.showBeat = -1; prog.showSlot = -1;
+  prog.e8 = 30/(+bpmEl.value);
+  prog.t0 = actx.currentTime + 0.45; prog.nextSlot = 0;
   setChord(prog.list[prog.pos]);
   document.getElementById('btnProg').textContent = '■ ストップ';
   prog.timer = setInterval(tickProg, 25);
-  tickProg();
+  tickProg(); kick();
 }
 function stopProg(){
+  if(prog.running) prog.pos = (prog.pos + Math.floor(Math.max(0,prog.nextSlot-1)/8)) % prog.list.length;
   prog.running = false; clearInterval(prog.timer);
   document.getElementById('btnProg').textContent = '▶ スタート';
-  renderProg();
+  renderProg(); kick();
 }
 document.getElementById('btnProg').onclick = ()=> prog.running ? stopProg() : startProg();
+
+// 右手の今の状態（振りの角度・浮かせる量）
+const REST = {theta: -STRUM_AMP, lift: 7};
+function rightState(now){
+  if(prog.running && actx){
+    const ph = (actx.currentTime - prog.t0)/prog.e8;
+    if(ph < -0.5) return REST;
+    return strumState(ph, PATTERNS[prog.pat].p);
+  }
+  if(oneShot){
+    const t = now - oneShot.start;
+    if(t < ONE_DOWN){ const u = t/ONE_DOWN; return {theta: STRUM_AMP*Math.sin(Math.PI*(u-0.5)), lift: 0}; }
+    if(t < ONE_DOWN+ONE_BACK){ const u = (t-ONE_DOWN)/ONE_BACK, e = (1-Math.cos(Math.PI*u))/2;
+      return {theta: STRUM_AMP*(1-2*e), lift: 7*Math.sin(Math.PI*Math.min(1,u*1.3))}; }
+    oneShot = null;
+  }
+  return REST;
+}
 
 /* ---------- 描画ループ（動いている時だけ描き直す） ---------- */
 let dirty = true, raf = 0;
@@ -302,12 +344,14 @@ function kick(){ dirty = true; if(!raf) raf = requestAnimationFrame(loop); }
 function loop(now){
   raf = 0;
   if(!view || !poseTo) return;
-  const moving = !!poseFrom;
-  if(dirty || moving){
-    view.render(currentPose(now), state);
+  const handMoving = !!poseFrom;
+  const rightMoving = state.rightOn && (prog.running || !!oneShot);
+  if(dirty || handMoving || rightMoving){
+    // 輪切り図は左手が変わった時だけ描き直す（右手だけ動いている時は軽く）
+    view.render(currentPose(now), {...state, right: state.rightOn ? rightState(now) : null, skipSide: !dirty && !handMoving});
     dirty = false;
   }
-  if(poseFrom) raf = requestAnimationFrame(loop);
+  if(handMoving || rightMoving) raf = requestAnimationFrame(loop);
 }
 
 window.addEventListener('resize', kick);

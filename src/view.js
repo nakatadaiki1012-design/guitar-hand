@@ -6,6 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildUkulele, neckSectionShape } from './uke.js';
 import { loadHand, applyPose } from './handrig.js';
+import { rightHandPose, STRUM_X } from './strum.js';
 import { slotCenter, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG } from './geom.js';
 import { STRING_NAMES, FINGER_COLORS, FINGER_NAMES } from './data.js';
 
@@ -13,7 +14,9 @@ export const VIEWS = {
   diag:  {pol:50, az:-42, dist:260, up:[0,0,1],  name:'ななめ（手の形がいちばん分かりやすい）'},
   self:  {pol:46, az:-90, dist:320, up:[0,0,1],  name:'自分目線（弾いている人の目から）'},
   front: {pol:16, az:-80, dist:340, up:[0,-1,0], name:'正面（向かい合った先生から）'},
-  side:  {pol:78, az:160, dist:320, up:[0,0,1],  name:'横から（ボディ側から）'}
+  side:  {pol:78, az:160, dist:320, up:[0,0,1],  name:'横から（ボディ側から）'},
+  both:  {pol:44, az:-78, dist:720, up:[0,0,1],  name:'両手（全体を見る）', fixed:[150, 15, -10]},
+  right: {pol:62, az:-118, dist:400, up:[0,0,1],  name:'右手（ストロークを見る）', fixed:[STRUM_X, 0, 25]}
 };
 
 export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverlay, onTap}){
@@ -105,6 +108,11 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
       glow.position.set(x, y, FRET_TOP + 1.2); glow.scale.set(13,13,1); glow.renderOrder = 9; marks.add(glow);
     }
   }
+  // 右手（ストローク用）。肌の質感は左手と同じ
+  const skinR = skin.clone(); skinR.onBeforeCompile = skin.onBeforeCompile;
+  const rigR = await loadHand(skinR, 'right');
+  scene.add(rigR.root);
+
   // 輪切りの断面
   const cap = new THREE.Group(); cap.visible = false; scene.add(cap);
   const capNeck = new THREE.MeshStandardMaterial({color:'#a8713f', roughness:0.7, side:THREE.DoubleSide});
@@ -118,6 +126,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   function setView(name){
     viewName = name;
     const v = VIEWS[name];
+    if(v.fixed) target.set(...v.fixed);
     const narrow = mainCanvas.clientWidth < 640;
     const d = v.dist * (narrow ? 0.92 : 1);
     const pol = v.pol*DEG, az = v.az*DEG;
@@ -151,9 +160,12 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     uke.setStrings(pose.str);
     setGhost(!!opts.ghost);
     placeMarks(pose, !!opts.ghost);
-    // コードが変わったら見る中心も少しずらす（カメラごと平行移動）
+    // 右手
+    rigR.root.visible = !!opts.right;
+    if(opts.right){ const rp = rightHandPose(rigR, opts.right); window.__rp = rp; applyPose(rigR, rp); }
+    // コードが変わったら見る中心も少しずらす（カメラごと平行移動）。全体・右手の表示では動かさない
     const nt = new THREE.Vector3(...pose.target);
-    if(nt.distanceTo(target) > 0.01){
+    if(!VIEWS[viewName].fixed && nt.distanceTo(target) > 0.01){
       const delta = nt.clone().sub(target);
       target.copy(nt); controls.target.add(delta); camera.position.add(delta); controls.update();
     }
@@ -165,8 +177,9 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     let html = '';
     const P = p => { const q = project(camera, p, W, H); if(q && opts.mirror) q[0] = W - q[0]; return q; };
     const at = (q, cls, txt, style='') => { if(q && q[0]>-30 && q[0]<W+30 && q[1]>-30 && q[1]<H+30) html += `<div class="${cls}" style="left:${q[0].toFixed(1)}px;top:${q[1].toFixed(1)}px;${style}">${txt}</div>`; };
-    for(let n=1; n<=5; n++) at(P([slotCenter(n), -halfW(slotCenter(n))-8, 0]), 'lab fret', n+'<small>フレット</small>');
-    for(let s=0; s<4; s++){
+    const showLabels = !VIEWS[viewName].fixed;
+    if(showLabels) for(let n=1; n<=5; n++) at(P([slotCenter(n), -halfW(slotCenter(n))-8, 0]), 'lab fret', n+'<small>フレット</small>');
+    if(showLabels) for(let s=0; s<4; s++){
       const open = pose.chord.frets[s]===0;
       at(P([-9, strY(s,0), stringZ(0)+3]), 'lab str'+(open?' open':''), STRING_NAMES[s]+(open?'<small>○</small>':''));
     }
@@ -178,6 +191,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
       }
     }
     mainOverlay.innerHTML = html;
+    if(opts.skipSide) return;
 
     // ---- 輪切り図 ----
     const fingers = pose.fingers;
@@ -215,7 +229,9 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     sideCam.position.set(cut - dir*240, 26, 34);
     sideCam.lookAt(st);
     const [sw, shh] = fit(sideRenderer, sideCam, sideCanvas);
+    const rv = rigR.root.visible; rigR.root.visible = false;
     sideRenderer.render(scene, sideCam);
+    rigR.root.visible = rv;
     cap.visible = false; clipPlane.constant = 1e5; clipFar.constant = 1e5;
     let sh2 = '';
     for(let s=0; s<4; s++){
@@ -229,7 +245,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
 
   setView('diag');
   return {
-    render, setView, rig,
+    render, setView, rig, rigR, rightHandPose,
     debugCam(pos, look){ camera.position.set(...pos); controls.target.set(...look); controls.update(); },
     onChange(fn){ requestRender = fn; },
     get viewName(){ return viewName; }

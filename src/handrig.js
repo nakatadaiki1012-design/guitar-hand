@@ -1,11 +1,12 @@
 /* =========================================================
    手の3Dモデル（関節に骨が入ったもの）を読み込んで動かす
-   モデル：WebXR Input Profiles「generic-hand」左手（MIT License, Copyright (c) 2019 Amazon）
+   モデル：WebXR Input Profiles「generic-hand」左手・右手（MIT License, Copyright (c) 2019 Amazon）
    関節の向きのルール（WebXR）：-Z が指先の方向、+Y が手の甲の方向
    ========================================================= */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import handGlb from '../node_modules/@webxr-input-profiles/assets/dist/profiles/generic-hand/left.glb';
+import leftGlb from '../node_modules/@webxr-input-profiles/assets/dist/profiles/generic-hand/left.glb';
+import rightGlb from '../node_modules/@webxr-input-profiles/assets/dist/profiles/generic-hand/right.glb';
 import { sub, vlen, norm, cross, dot, mul } from './geom.js';
 import { smoothSkinnedGeometry } from './subdivide.js';
 
@@ -14,7 +15,8 @@ const FINGER_JOINTS = ['metacarpal','phalanx-proximal','phalanx-intermediate','p
 export const THUMB_JOINTS = ['thumb-metacarpal','thumb-phalanx-proximal','thumb-phalanx-distal','thumb-tip'];
 export const jointName = (f, i) => `${FINGER_KEYS[f]}-finger-${FINGER_JOINTS[i]}`;
 
-export async function loadHand(skinMaterial){
+export async function loadHand(skinMaterial, side='left'){
+  const handGlb = side === 'right' ? rightGlb : leftGlb;
   const gltf = await new Promise((res, rej)=>new GLTFLoader().parse(handGlb.buffer.slice(handGlb.byteOffset, handGlb.byteOffset+handGlb.byteLength), '', res, rej));
   const root = new THREE.Group();
   root.scale.setScalar(1000);              // モデルはメートル、この画面はmm
