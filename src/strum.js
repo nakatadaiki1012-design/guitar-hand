@@ -20,7 +20,8 @@ const CFG = {
   curl:  {1:[26,56,48], 2:[66,95,55], 3:[72,98,55], 4:[76,98,55]},  // 指の曲げ（付け根・第二・第一関節）
   splay: {1:6, 2:0, 3:-7, 4:-15},            // 指を軽く寄せる（度）
   pivotUp: 120,                              // 腕で振る時の中心：弦から客席側へ何mmか
-  mix: [0.55, 0.30, 0.15],                   // 回す軸の配分：手首の横振り・前腕のひねり・ネック方向
+  mix: [0.50, 0.38, 0.12],                   // 回す軸の配分：手首の横振り・前腕のひねり・ネック方向
+  rollBias: -12,                             // 構えの時から、前腕を小指側へ少しひねっておく（度）
   armFollow: 0.2,                            // 弦の上の動きのうち、腕ごと動く割合（残りは手首のスナップ）
   elbow: [0.55, -0.50, -0.67],               // 手首→ひじの向き：前腕はウクレレの尾側から、ボディの上の縁にのせて斜めに来る
 };
@@ -89,7 +90,7 @@ export function rightHandPose(rig, st){
   // θ=0 のとき人差し指の爪が弦のまん中を通るように手首の位置を決める
   const target = [STRUM_X, 0, stringZ(STRUM_X) + 0.4];
   // 手首のしなり（flex：手のひら側へ）と前腕のひねり（roll）を、手首を中心に加える
-  const flexA = (st.wrist || 0)*DEG, rollA = (st.roll || 0)*DEG;
+  const flexA = (st.wrist || 0)*DEG, rollA = ((st.roll || 0) + CFG.rollBias)*DEG;
   const bend = v => R3(F, rollA, R3(X, flexA, v));
   const toWb = v => bend(toW(v));
   const W = sub(target, toWb(hit));
@@ -165,7 +166,7 @@ export function strumState(phase, pattern){
   const lag = 0.14;
   const wrist = -16 * (A/STRUM_AMP) * Math.sin(Math.PI*(phase - lag));
   // 前腕のひねり：ダウンで手の甲が少し上を向くように
-  const roll = 18 * (A/STRUM_AMP) * Math.sin(Math.PI*(phase - lag*0.5));
+  const roll = 22 * (A/STRUM_AMP) * Math.sin(Math.PI*(phase - lag*0.5));
   // 指のしなり：動く向き（速度）に合わせて。弦を通る少し前から
   const v = Math.cos(Math.PI*(phase + 0.06));               // ＋で下向き（ダウン）に動いている
   const flick = v > 0 ? 12*v : 8*v;

@@ -84,6 +84,13 @@ export function solveThumb(M, toW, toWd, opts){
     c += g > 1 ? (g-1)*(g-1)*0.6 : g < -1 ? (g+1)*(g+1)*3 : 0;
     // 2) 位置の好み：人差し指と中指の間の裏、ネックのまん中より少し4弦側
     c += Math.pow(pad[0]-xTarget, 2)*0.02 + Math.pow(pad[1]-yTarget, 2)*0.03;
+    // 2b) 深く握る：親指の先がネックの上の縁（1弦Gの側）から少しのぞく
+    if(opts.peek){
+      const over = W[3][1] + halfW(W[3][0]) + opts.peek;        // 縁より peek mm 上に出ればゼロ
+      if(over > 0) c += over*over*0.3;
+      const back = -12 - W[3][2];                                 // 先はネックの裏ではなく、横の高さまで回り込む
+      if(back > 0) c += back*back*0.15;
+    }
     // 3) 親指の骨がネックにめり込まない
     for(let s=0;s<3;s++) for(let t=0;t<=1.001;t+=0.25){
       const P = add(W[s], mul(sub(W[s+1],W[s]), t));
