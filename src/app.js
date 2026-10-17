@@ -5,7 +5,7 @@ import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROO
 import { computePose, blendPose, HAND_CFG } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
-import { PATTERNS, strumState, STRUM_AMP } from './strum.js';
+import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false, focus:0, vib:[0,0,0,0]};
 let view = null, rig = null;
@@ -178,7 +178,7 @@ function currentPose(now){
   if(t>=1){ poseFrom = null; return poseTo; }
   return blendPose(poseFrom, poseTo, t);
 }
-window.setChord = setChord;
+window.setChord = setChord; window.__strumState = strumState;
 // コードのボタンを押した時：手がすばやく次の形になり、押さえ終わると同時にジャラーンと鳴る
 function pickChord(name){
   if(prog.running || song.running){ return; }              // 練習・曲デモの演奏中はコードを変えない
@@ -533,21 +533,21 @@ function musicPose(pl, ph){
 }
 
 // 右手の今の状態（振りの角度・浮かせる量）
-const REST = {theta: -STRUM_AMP, lift: 7};
+const REST = {theta: -STRUM_AMP, lift: 7, wrist: 4, roll: 0, flick: -4};
 function rightState(now, pl, ph){
   if(pl){
-    if(ph < -0.5) return REST;
-    if(pl.end !== Infinity && ph > pl.end - pl.spb + 0.6) return {theta: STRUM_AMP, lift: 6};   // 最後のジャーンのあと
+    if(ph < -0.5) return idleState(now/1000);
+    if(pl.end !== Infinity && ph > pl.end - pl.spb + 0.6) return {theta: STRUM_AMP*1.1, lift: 6, wrist: -10, roll: 6, flick: 6};   // 最後のジャーンのあと
     return strumState(ph, pl.pattern);
   }
   if(oneShot){
     const t = (now - oneShot.start)/state.speed;
-    if(t < ONE_DOWN){ const u = t/ONE_DOWN; return {theta: STRUM_AMP*Math.sin(Math.PI*(u-0.5)), lift: 0}; }
+    if(t < ONE_DOWN){ const u = t/ONE_DOWN; return {...strumState(u-0.5, 'D-'), lift: 0}; }
     if(t < ONE_DOWN+ONE_BACK){ const u = (t-ONE_DOWN)/ONE_BACK, e = (1-Math.cos(Math.PI*u))/2;
-      return {theta: STRUM_AMP*(1-2*e), lift: 7*Math.sin(Math.PI*Math.min(1,u*1.3))}; }
+      return {theta: STRUM_AMP*(1-2*e), lift: 7*Math.sin(Math.PI*Math.min(1,u*1.3)), wrist: -10*(1-2*e), roll: 6*(1-2*e), flick: -6*Math.sin(Math.PI*u)}; }
     oneShot = null;
   }
-  return REST;
+  return idleState(now/1000);
 }
 
 /* ---------- 描画ループ（動いている時だけ描き直す） ---------- */
@@ -563,10 +563,9 @@ function smoothRight(target, now){
   if(!rSmooth){ rSmooth = {...target}; return rSmooth; }
   const dt = Math.min(0.1, Math.max(0, (now - (rSmooth.t||now))/1000));
   const k = 1 - Math.exp(-dt/0.018);
-  rSmooth.theta += (target.theta - rSmooth.theta)*k;
-  rSmooth.lift  += (target.lift  - rSmooth.lift )*k;
+  for(const key of ['theta','lift','wrist','roll','flick']) rSmooth[key] = (rSmooth[key] ?? 0) + ((target[key] ?? 0) - (rSmooth[key] ?? 0))*k;
   rSmooth.t = now;
-  return {theta: rSmooth.theta, lift: rSmooth.lift};
+  return {theta: rSmooth.theta, lift: rSmooth.lift, wrist: rSmooth.wrist, roll: rSmooth.roll, flick: rSmooth.flick};
 }
 function loop(now){
   raf = 0;
@@ -596,7 +595,7 @@ function loop(now){
       else highlightSong(ph < 0 || ph >= pl.end ? -1 : Math.floor(ph/pl.spb));
     } else pose = currentPose(now);
     const settle = handMoving && !poseFrom;                // 左手の動きがちょうど終わった
-    const right = smoothRight(showRight ? rightState(now, pl, phR) : null, now);
+    const right = window.__forceRight || smoothRight(showRight ? rightState(now, pl, phR) : null, now);
     view.render(pose, {...state, right, quality: moving ? quality : 1,
       skipSide: pl ? true : handMoving ? !settle : !dirty});
     dirty = false;
