@@ -75,6 +75,19 @@ export const PROGRESSIONS = [
    ========================================================= */
 export const SONGS = [
   {
+    // 原曲はBPM156（ゆったりした2拍の取り方で78）。ほぼ全編 C→G→Am→F の循環、Bメロだけ Am→C→D→F・G
+    // メロディは著作権があるので入れず、コード進行とストロークだけの伴奏デモ
+    id:'slowandeasy', title:'Slow & Easy（平井大）', short:'Slow & Easy', credit:'作詞・作曲：平井大（2014年）※コード進行と伴奏だけ',
+    key:'C', beats:4, bpm:78, pattern:'D-DU-UDU', note:'ほぼ全部 C→G→Am→F のくり返し。Bメロだけ Am→C→D→F・G。のんびり軽く',
+    bars:[ 'C','G','Am','F',                              // イントロ
+           'C','G','Am','F', 'C','G','Am','F',            // Aメロ
+           'Am','C','D',[['F',2],['G',2]], 'Am','C','D',[['F',2],['G',2]],   // Bメロ
+           'C','G','Am','F', 'C','G','Am','F',            // サビ
+           'C','G','Am','F', 'C'                          // おわり
+         ].map(b=>Array.isArray(b) ? b : [b]),
+    pickup:0
+  },
+  {
     id:'birthday', title:'ハッピーバースデー・トゥー・ユー', short:'ハッピーバースデー', credit:'作曲：ミルドレッド・J・ヒル（1893年）',
     key:'C', beats:3, bpm:100, pattern:'D-DUDU', note:'3拍子。「ジャン・ジャカ・ジャカ」の感じで',
     bars:[['C'],['G7'],['G7'],['C'],['C7'],['F'],[['C',2],['G7',1]],['C']],

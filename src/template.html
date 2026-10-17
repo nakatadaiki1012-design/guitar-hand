@@ -73,6 +73,29 @@
   .chordCard .arr{color:#fff;font-size:13px;text-shadow:0 0 4px #0008}
   #mainWrap.split .chordCard .cc{width:46px} #mainWrap.split .chordCard .cc.now{width:52px}
   @media (max-width:640px){.chordCard .cc{width:40px} .chordCard .cc.now{width:46px} .hint{display:none}}
+  /* 全画面 */
+  .fsbtn{right:44px;font-size:16px}
+  .fsbar{display:none}
+  body.fs{overflow:hidden}
+  body.fs .stage{position:fixed;inset:0;z-index:50;border-radius:0;padding:0;border:0;margin:0;box-shadow:none}
+  body.fs .stage-head,body.fs .legend,body.fs .hint{display:none}
+  body.fs #mainWrap{position:absolute;inset:0;border-radius:0}
+  body.fs #handView,body.fs #handView.split{width:100%;height:100%;aspect-ratio:auto}
+  body.fs .chordCard{top:46px;bottom:auto}
+  body.fs .settings{top:46px;right:8px;max-height:calc(100% - 60px)}
+  body.fs .fsbar{display:flex;flex-direction:column;gap:5px;position:absolute;left:50%;transform:translateX(-50%);bottom:max(8px, env(safe-area-inset-bottom));
+    width:min(760px,calc(100% - 16px));background:rgba(255,255,255,.72);backdrop-filter:blur(8px);border-radius:14px;padding:6px;box-shadow:0 4px 18px rgba(0,0,0,.15)}
+  .fsplay{display:flex;gap:6px}
+  .fsplay #fsName{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;font-weight:700}
+  .fsbar .fsplay #fsPlay{flex:0 0 auto;min-width:110px;padding:6px 14px}
+  .fsbar .fsplay #fsName{flex:1 1 auto}
+  @media (max-height:520px){
+    body.fs .fsbar{gap:3px;padding:4px;width:min(820px,calc(100% - 120px))}
+    body.fs .fsbar button{padding:3px 0;font-size:13px}
+    body.fs .fsbar .fsplay button{padding:3px 10px}
+    body.fs .fsbar #rootRow button{font-size:14px}
+  }
+  .fsbar .row+.row,.fsbar .fsplay+.row{margin-top:0}
   .settings{position:absolute;z-index:20;top:62px;right:16px;width:min(330px,calc(100% - 32px));max-height:min(78vh,560px);overflow:auto;
     background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 40px rgba(20,40,50,.22);padding:10px 12px 12px}
   .set-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
@@ -196,6 +219,11 @@
       <button class="vsel" id="angleBtn" title="押すたびに見る向きが変わります">🎥 ななめ</button>
       <button class="vsel vsel2" id="angle2Btn" title="右の画面の向き" hidden>🎥 正面</button>
       <button class="gear" id="gearBtn" title="設定（背景・ウクレレの柄・表示）" aria-label="設定">⚙</button>
+      <button class="gear fsbtn" id="fsBtn" title="全画面" aria-label="全画面">⛶</button>
+      <!-- 全画面の時だけ：3D画面の下にコードのボタンと再生ボタンを重ねる -->
+      <div class="picker fsbar" id="fsBar">
+        <div class="fsplay"><button id="fsName" class="chip" title="押すと 練習／曲デモ を切り替え"></button><button id="fsPlay" class="play">▶</button></div>
+      </div>
       <div class="chordCard" id="chordCard"></div>
     </div>
     <!-- 設定（小さな歯車ボタンから開く） -->
@@ -256,7 +284,7 @@
           <button class="chip speedBtn" title="押すたびに ×1 → ×¾ → ×½ → ×¼（スロー再生）">速さ ×1</button>
           <span class="tempo">テンポ <input type="range" id="songBpm" min="50" max="140" value="100"> <span id="songBpmVal">100</span></span>
         </div>
-        <p class="cap">1小節カウントしてから始まります。アングルを「両手」にすると両手の動きが見やすくなります。曲はどれも著作権の切れた曲です。</p>
+        <p class="cap">1小節カウントしてから始まります。アングルを「両手」にすると両手の動きが見やすくなります。Slow & Easy はコード進行と伴奏だけ（メロディは著作権があるので入れていません）。ほかの曲は著作権の切れた曲です。</p>
       </div>
     </section>
   </div>

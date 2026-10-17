@@ -257,6 +257,34 @@ document.querySelectorAll('.swingBtn').forEach(b=>b.onclick = ()=>{
   state.swing = !state.swing;
   document.querySelectorAll('.swingBtn').forEach(x=>x.classList.toggle('on', state.swing));
 });
+/* ---------- 全画面：3D画面いっぱいに。コードのボタンと再生ボタンは3D画面の中へ ---------- */
+const fsBtn = document.getElementById('fsBtn'), fsBar = document.getElementById('fsBar');
+const fsName = document.getElementById('fsName'), fsPlay = document.getElementById('fsPlay');
+let fsOn = false;
+const activeTab = () => document.querySelector('[data-tab].on')?.dataset.tab || 'practice';
+function updateFs(){
+  if(!fsOn) return;
+  const pr = activeTab() === 'practice';
+  const run = pr ? prog.running : song.running;
+  fsName.textContent = pr ? '練習：' + prog.list.join('→') : '曲：' + SONG().title;
+  fsPlay.textContent = run ? '■ ストップ' : '▶ ' + (pr ? 'スタート' : '演奏する');
+}
+function setFS(on){
+  fsOn = on;
+  document.body.classList.toggle('fs', on);
+  if(on) fsBar.append(rootRow, typeRow); else document.querySelector('.side .picker').append(rootRow, typeRow);
+  fsBtn.textContent = on ? '✕' : '⛶'; fsBtn.title = on ? '全画面をやめる' : '全画面';
+  try{
+    if(on && !document.fullscreenElement) document.documentElement.requestFullscreen?.()?.catch?.(()=>{});
+    if(!on && document.fullscreenElement) document.exitFullscreen?.();
+  }catch(e){}
+  updateFs(); kick();
+}
+fsBtn.onclick = ()=>setFS(!fsOn);
+document.addEventListener('fullscreenchange', ()=>{ if(!document.fullscreenElement && fsOn) setFS(false); });
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && fsOn) setFS(false); });
+fsPlay.onclick = ()=>{ document.getElementById(activeTab() === 'practice' ? 'btnProg' : 'btnSong').click(); updateFs(); };
+fsName.onclick = ()=>{ document.querySelector(`[data-tab="${activeTab() === 'practice' ? 'songs' : 'practice'}"]`).click(); updateFs(); };
 // タブ（練習／曲デモ）
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick = ()=>{
   document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on', x===b));
@@ -393,12 +421,14 @@ function startProg(){
   document.getElementById('btnProg').textContent = '■ ストップ';
   prog.timer = setInterval(tickProg, 25);
   tickProg(); kick();
+  updateFs();
 }
 function stopProg(){
   if(prog.running) prog.pos = (prog.pos + Math.floor(Math.max(0,prog.nextSlot-1)/8)) % prog.list.length;
   prog.running = false; clearInterval(prog.timer);
   document.getElementById('btnProg').textContent = '▶ スタート';
   highlightProg(-1,-1); setChord(prog.list[prog.pos], false);
+  updateFs();
 }
 document.getElementById('btnProg').onclick = ()=> prog.running ? stopProg() : startProg();
 
@@ -519,11 +549,13 @@ function startSong(){
   document.getElementById('btnSong').textContent = '■ ストップ';
   song.timer = setInterval(tickSong, 25);
   tickSong(); kick();
+  updateFs();
 }
 function stopSong(){
   song.running = false; clearInterval(song.timer);
   document.getElementById('btnSong').textContent = '▶ 演奏する';
   highlightSong(-1); showStrip([chordName()]); kick();
+  updateFs();
 }
 document.getElementById('btnSong').onclick = ()=> song.running ? stopSong() : startSong();
 renderSong();

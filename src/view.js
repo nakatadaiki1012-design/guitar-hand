@@ -212,8 +212,15 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   function fit(r, cam, canvas){
     const w = canvas.clientWidth, h = canvas.clientHeight;
     const s = r.getSize(new THREE.Vector2());
-    if(s.x !== w || s.y !== h){ r.setSize(w, h, false); cam.aspect = w/h; cam.updateProjectionMatrix(); }
+    if(s.x !== w || s.y !== h){ r.setSize(w, h, false); setAspect(cam, w/h); }
     return [w, h];
+  }
+  // 縦長の画面（スマホの全画面など）では、横の見える幅が4:3の時より狭くならないように画角を広げる
+  function setAspect(cam, a){
+    if(Math.abs(cam.aspect - a) < 1e-4 && cam._fovSet) return;
+    cam.aspect = a; cam._fovSet = true;
+    cam.fov = a < 4/3 ? 2*Math.atan(Math.tan(13*DEG)*(4/3)/a)/DEG : 26;
+    cam.updateProjectionMatrix();
   }
   const project = (cam, p, W, H) => { const v = new THREE.Vector3(...p).project(cam); if(v.z > 1) return null; return [(v.x+1)/2*W, (1-v.y)/2*H]; };
 
@@ -245,8 +252,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     if(opts.split){
       // 左右に分けて2つの向きを描く
       W = Math.floor(Wc/2);
-      camera.aspect = W/H; camera.updateProjectionMatrix();
-      camera2.aspect = (Wc-W)/H; camera2.updateProjectionMatrix();
+      setAspect(camera, W/H); setAspect(camera2, (Wc-W)/H);
       renderer.setScissorTest(true);
       renderer.setViewport(0, 0, W, H); renderer.setScissor(0, 0, W, H);
       renderer.render(scene, camera);
@@ -255,7 +261,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
       renderer.setScissorTest(false);
       renderer.setViewport(0, 0, Wc, H);
     } else {
-      if(Math.abs(camera.aspect - Wc/H) > 1e-3){ camera.aspect = Wc/H; camera.updateProjectionMatrix(); }
+      if(Math.abs(camera.aspect - Wc/H) > 1e-3) setAspect(camera, Wc/H);
       renderer.render(scene, camera);
     }
     let html = '';
