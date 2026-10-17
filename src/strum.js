@@ -1,6 +1,6 @@
 /* =========================================================
    右手のストローク
-   ・手の形：ピックを持つ。人差し指を軽く曲げ、その第一関節の横と親指の腹でピックをはさむ。中指〜小指はその後ろに軽く握り込む。
+   ・手の形：ピックを持つ。人差し指を軽く曲げ、その指先の節の横と親指の先の腹でピックをつまむ。中指〜小指はその後ろに軽く握り込む。
              ピックの先（とがった所）が指から7mmほど出て、そこで弦を弾く
    ・腕の向き：前腕はギターの尾側（ボディのおしり側）から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横で約90°）
    ・動き　：腕は止めたまま、手の甲を軸にして指先側を回して弾く（手の甲はあまり動かない）
@@ -62,7 +62,10 @@ function localHand(rig, flick=0){
   // 親指：腹を人差し指の第一関節の横（親指側・少し手のひら側）に当てる
   rig.thumbModel ||= makeThumbModel(THUMB_JOINTS.map(n=>rig.rest[n]), THUMB_JOINTS.map(n=>rig.restBasis[n]), palm, rig.rest[jointName(1,1)]);
   const iP = J.find(j=>j.name===jointName(1,2)).pos, iD = J.find(j=>j.name===jointName(1,3)).pos;
-  const thTarget = add(add(mul(add(iP,iD),0.5), mul(radial, 9)), mul(palm, 2));
+  // ピックは指先でつまむ：人差し指のいちばん先の節（第一関節〜指先）の横と、親指の先の腹ではさむ
+  const iT0 = J.find(j=>j.name===jointName(1,4)).pos;
+  const grip = add(mul(iD, 0.4), mul(iT0, 0.6));
+  const thTarget = add(add(grip, mul(radial, 9)), mul(palm, 1));
   const th = solveThumbTo(rig.thumbModel, thTarget);
   for(let i=0;i<4;i++){
     const B = rig.thumbModel.restBasis[i], R = th.Rs[i];
@@ -74,7 +77,7 @@ function localHand(rig, flick=0){
   const pickN = radial;
   const pd = add(norm(sub(iTj.pos, iDj.pos)), mul(palm, 1.2));
   const pickX = norm(sub(pd, mul(pickN, dot(pd, pickN))));
-  const pickC = add(add(mul(add(iP, iD), 0.5), mul(radial, 7.6)), mul(pickX, 6));
+  const pickC = add(add(grip, mul(radial, 7.6)), mul(pickX, 4));
   const hit = add(pickC, mul(pickX, PICK_TIP));
   // 手の甲のまん中（中指の骨のまん中あたりの、甲の表面）… ここを軸にして指先側を回す
   const m0 = rig.rest[jointName(2,0)], m1 = rig.rest[jointName(2,1)];

@@ -8,11 +8,11 @@ import { createView, VIEWS } from './view.js';
 import { BACKDROPS } from './backdrop.js';
 import { FINISHES } from './guitar.js';
 import { GUITARS, NSTR, strY, STRUM_X } from './geom.js';
-import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventChord, eventPressed, noteName } from './tab.js';
+import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventChord, eventPressed, noteName, fingerPlan } from './tab.js';
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
-               bg:'day', guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst'}, chart:true, leftHand:true};
+               bg:'day', guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true};
 // 設定は次に開いた時も同じになるように覚えておく（覚えられない端末ではそのまま）
 const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand'];
 try{ const sv = JSON.parse(localStorage.getItem('guitarSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
@@ -73,7 +73,7 @@ let actx = null, master = null;
 const tone = {};
 function setTone(){
   if(!actx) return;
-  const el = state.guitar === 'electric';
+  const el = state.guitar !== 'acoustic';
   tone.body.frequency.value = el ? 900 : 120; tone.body.gain.value = el ? 2 : 6;   // アコギは低い胴鳴り
   tone.lp.frequency.value = el ? 4200 : 6500;
 }
@@ -605,7 +605,7 @@ function loadTabSongs(){
   tabs.list = TAB_SONGS.map(sg=>({...sg, ...parseCompact(sg.tab)}));
   try{ for(const sg of JSON.parse(localStorage.getItem('guitarTabImports') || '[]')) tabs.list.push(sg); }catch(e){}
 }
-const saveImports = () => { try{ localStorage.setItem('guitarTabImports', JSON.stringify(tabs.list.filter(t=>t.imported))); }catch(e){} };
+const saveImports = () => { try{ localStorage.setItem('guitarTabImports', JSON.stringify(tabs.list.filter(t=>t.imported), (k,v)=>k === 'plan' ? undefined : v)); }catch(e){} };
 loadTabSongs();
 const tabList = document.getElementById('tabList'), tabSheet = document.getElementById('tabSheet'), tabBpm = document.getElementById('tabBpm');
 function renderTabList(){
@@ -665,7 +665,8 @@ function highlightTab(i){
 // 何番目の音の時の手の形：手はポジション（人差し指のフレット）に置いたまま、指だけで押さえる。開放弦は緑に光らせる
 function tabEventPose(sg, i){
   const e = sg.events[i];
-  const pose = computeTabPose(eventChord(e), view.rig, e.P || 1);
+  sg.plan ||= fingerPlan(sg.events);
+  const pose = computeTabPose(eventChord(e), view.rig, e.P || 1, sg.plan[i]);
   const open = e.notes.filter(n=>!n.f).map(n=>n.s);
   return open.length ? {...pose, openStr: open} : pose;
 }
@@ -742,11 +743,12 @@ async function startTab(){
   const sg = TAB(); if(!sg.events.length || !view) return;
   // 曲で使う手の形を先に計算しておく（少しずつ・画面を止めないように）
   const btn = document.getElementById('btnTab');
-  const todo = [...new Map(sg.events.map(e=>{ const c = eventChord(e); return [c.name + '@' + (e.P||1), [c, e.P||1]]; })).values()];
+  sg.plan ||= fingerPlan(sg.events);
+  const todo = sg.events.map((e,i)=>[eventChord(e), e.P||1, sg.plan[i]]);
   const run = ++tabs.prep;
   for(let k=0;k<todo.length;k++){
     btn.textContent = `準備中 ${k}/${todo.length}`;
-    computeTabPose(todo[k][0], view.rig, todo[k][1]);
+    computeTabPose(todo[k][0], view.rig, todo[k][1], todo[k][2]);
     await new Promise(r=>setTimeout(r, 0));
     if(run !== tabs.prep) return;                                 // 準備中にストップや曲の変更があった
   }

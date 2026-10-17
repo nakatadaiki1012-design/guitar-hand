@@ -187,7 +187,9 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
       addc('reach'+f, pd*pd*0.5);
     } else {
       mode = 'hover';   // 使わない指：軽く曲げて弦の少し上に浮かせる
-      if(opts.hoverP){                                       // メロディ：自分のフレットの上で、次に押さえる準備をして待つ
+      if(opts.hoverT && opts.hoverT[f]){                     // メロディ：決まった場所（さっき押さえていた所の少し上など）で待つ
+        T = opts.hoverT[f];
+      } else if(opts.hoverP){                                // メロディ：自分のフレットの上で、次に押さえる準備をして待つ
         const x = fretX(opts.hoverP + f - 1) - 5;
         T = [x, strY(opts.hoverS, x) + 2, FRET_TOP + PAD_R + 6];
       } else {
@@ -298,32 +300,22 @@ function positionAnchor(P, rig){
   }
   return poseCache.get(key);
 }
-const STAY = {yK:[3,0.06], zK:[3,0.06], pitch:[4,0.03], roll:[4,0.03]};
-export function computeTabPose(chord, rig, P=1){
-  const key = chord.name + '@' + P;
+/* hover：押さえていない指の待つ場所 {指: [弦, フレット, 浮かせる高さmm]}。手（手首・手のひら）は構えのまま動かさない */
+export function computeTabPose(chord, rig, P=1, hover=null){
+  const hk = hover ? Object.entries(hover).map(([f,[s,fr,l]])=>`${f}:${s}.${fr}.${l}`).join(',') : '';
+  const key = chord.name + '@' + P + '|' + hk;
   let hb = poseCache.get(key);
   if(!hb){
     const an = positionAnchor(P, rig);
     const ss = chord.frets.map((f,s)=>f>=0 ? s : -1).filter(s=>s>=0);
-    const opts = {anc: an.anc, hoverP: P, hoverS: ss.length ? ss.reduce((a,b)=>a+b,0)/ss.length : 2.5};
-    let prm = {...an.prm, dx1:0, dx2:0, dx3:0, dx4:0};
-    const stay = q => Object.entries(STAY).reduce((c,[k,[,w]])=>c + w*(q[k]-an.prm[k])**2, 0);
-    hb = buildHand(chord, rig, prm, an.th.ang, opts);
-    let bestC = hb.cost;
-    for(const scale of [1, 0.5]){
-      let improved = true, guard = 0;
-      while(improved && guard++ < 6){
-        improved = false;
-        for(const k in STAY) for(const sgn of [-1,1]){
-          const v = Math.min(PRM_LIM[k][1], Math.max(PRM_LIM[k][0], prm[k] + sgn*STAY[k][0]*scale));
-          if(v === prm[k]) continue;
-          const cand = {...prm, [k]: v};
-          const r = buildHand(chord, rig, cand, hb.th.ang, opts), c = r.cost + stay(cand);
-          if(c < bestC - 1e-4){ hb = r; prm = cand; bestC = c; improved = true; }
-        }
-      }
+    const hoverT = {};
+    if(hover) for(const f in hover){
+      const [s, fr, lift] = hover[f], x = fretX(fr) - 4.5;
+      hoverT[f] = [x, strY(s, x) + 1.0, stringZ(x) + 1 + PAD_R + lift];
     }
-    hb.prm = prm;
+    const opts = {anc: an.anc, hoverP: P, hoverS: ss.length ? ss.reduce((a,b)=>a+b,0)/ss.length : 2.5, hoverT};
+    hb = buildHand(chord, rig, {...an.prm, dx1:0, dx2:0, dx3:0, dx4:0}, an.th.ang, opts);
+    hb.prm = an.prm;
     poseCache.set(key, hb);
   }
   return poseFromHand(hb, chord, rig);

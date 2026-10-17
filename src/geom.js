@@ -2,8 +2,10 @@
    ギターの寸法（単位 mm）
    アコースティック：ドレッドノート（Martin D-28 を参考）… 弦長645 / ナット幅44.5 / ボディ長508
                      アッパー292 / ウエスト273 / ロワー397 / 厚み約115 / サウンドホール直径100 / 20フレット（14フレットでボディにつながる）
-   エレキ　　　　　：ストラトタイプ（Fender Stratocaster を参考）… 弦長648 / ナット幅42 / 22フレット
-                     ボディ長400・幅325・厚み45 / 3つのシングルコイル・トレモロブリッジ・6連ペグ
+   エレキ（ストラト型）：Fender Stratocaster の図面から … 弦長648 / ナット幅42 / 22フレット
+                     ボディ長460・幅322・厚み45 / 3つのシングルコイル・トレモロブリッジ・6連ペグ
+   エレキ（レスポール型）：1959年型 Gibson Les Paul の図面から … 弦長628.65 / ナット幅43 / 22フレット
+                     ボディ長438・幅333 / 表板はアーチ状に彫ってある / ネックは3.5°後ろへ傾けてつける / 2つのハムバッカー
    座標：x = ナット→ボディ方向 / y = 6弦(低いE・天井側)→1弦(高いE・床側) / z = 指板の表（客席側）
    指板の表面が z=0、指板の厚みは FB_T（その下がネック）
    ギターの種類を切り替えると、下の値（let）がまるごと入れ替わる（setGuitarType）
@@ -23,7 +25,7 @@ export const GUITARS = {
     headLen:190,
   },
   electric: {
-    label:'エレキ',
+    label:'エレキ（ストラト型）',
     scale:648, nutHalf:21, halfSlope:0.0154,                    // ナット42mm → 12F付近52mm
     sp0:7.0, spSlope:0.0054,                                    // ナット35mm → ブリッジ52.5mm
     act0:1.6, actSlope:0.0045,                                  // エレキは弦が低い
@@ -31,11 +33,24 @@ export const GUITARS = {
     wound:3,
     fbT:6, neck0:15, neckSlope:0.005, neckMaxX:400,
     bodyFret:16.9, frets:22, fbEndFret:22.6,
-    bodyLen:343, bodyDepth:45, topZ:-10,                        // ボディの表はネックの指板より10mm下（ネックをはめこむ）
+    bodyLen:460, bodyDepth:45, topZ:-10,                        // ボディの表はネックの指板より10mm下（ネックをはめこむ）
     headLen:195,
+  },
+  lespaul: {
+    label:'エレキ（レスポール型）',
+    scale:628.65, nutHalf:21.5, halfSlope:0.0159,               // ナット43mm → 22フレットで57.4mm
+    sp0:7.1, spSlope:0.00525,                                   // ナット35.5mm → ブリッジ52mm
+    act0:1.6, actSlope:0.0045,
+    strR:[0.58,0.45,0.33,0.215,0.165,0.127],
+    wound:3,
+    fbT:6, neck0:22.9, neckSlope:0.0077, neckMaxX:330,          // 太めのネック（1フレット22.9mm → 12フレット25.4mm、指板の下）
+    bodyFret:15.4, frets:22, fbEndFret:22.5,
+    bodyLen:438, bodyDepth:44, topZ:-14,                        // topZ：ネックのつけ根でのボディの縁の高さ（そこから3.5°下がっていく）
+    headLen:172,
   },
 };
 export let GTYPE = 'acoustic', G = GUITARS.acoustic;
+export const isElectric = () => GTYPE !== 'acoustic';
 export let SCALE_LEN, FRET_TOP = 1.2, FB_T, NECK_BACK_Z, BODY_X0, BODY_LEN, BODY_DEPTH, BODY_TOP, FB_END, HEAD_LEN, NUM_FRETS, STRING_R, STRUM_X;
 export const fretX = n => G.scale*(1-Math.pow(2,-n/12));        // 実物と同じフレット間隔
 export const slotCenter = f => (fretX(f-1)+fretX(f))/2;
@@ -50,8 +65,8 @@ export function setGuitarType(t){
   NECK_BACK_Z = -FB_T - NECK_DEPTH(40);                          // 1〜3フレットあたりのネック裏
   BODY_X0 = fretX(G.bodyFret); BODY_LEN = G.bodyLen; BODY_DEPTH = G.bodyDepth; BODY_TOP = G.topZ;
   FB_END = fretX(G.fbEndFret); HEAD_LEN = G.headLen; NUM_FRETS = G.frets;
-  // 右手で弾く場所：アコギはサウンドホールの上（指板の終わりのすぐ先）、エレキはフロントとセンターのピックアップの間
-  STRUM_X = GTYPE === 'electric' ? 520 : FB_END + 38;
+  // 右手で弾く場所：アコギはサウンドホールの上（指板の終わりのすぐ先）、エレキはピックアップの間
+  STRUM_X = GTYPE === 'electric' ? 520 : GTYPE === 'lespaul' ? 535 : FB_END + 38;
 }
 setGuitarType('acoustic');
 
