@@ -2,6 +2,7 @@
    右手のストローク
    ・手の形：ピックを軽く持つような形。人差し指は丸めて、第一関節〜爪の背中側で弦をこする。中指〜小指はその後ろに軽く握り込む。
              親指の腹は人差し指の第一関節の横にそっと当てる
+   ・腕の向き：前腕はウクレレの尾側（ボディのおしり側）から来て、ボディの上の縁にのせる
    ・動き　：ひじの先あたりを中心に、手首から先を振り子のように振る
              ダウン（4弦→1弦）は人差し指の爪、アップ（1弦→4弦）は指の腹で弦をこする
    ・弾かない拍（空ピッキング）でも手は止めず、弦から少し浮かせて振り続ける
@@ -14,12 +15,12 @@ export const STRUM_X = fretX(16.5);          // 弾く場所：ネックとボ�
 export const STRUM_AMP = 0.30;               // 振りの大きさ（ラジアン）
 
 const CFG = {
-  F: [-0.08, 0.98, -0.17],                   // 手首→指の付け根（床の方へ、少しボディ側へ傾ける）
-  N: [0.00, -0.17, -0.98],                   // 手のひらはボディと4弦側を向く（手の甲は客席側）
+  F: [-0.45, 0.85, -0.25],                   // 手首→指の付け根（前腕の向きから、手首で床の方へ曲げる）
+  N: [-0.15, -0.25, -0.96],                  // 手のひらはボディの方を向く（手の甲は客席側）
   curl:  {1:[30,70,75], 2:[66,95,55], 3:[72,98,55], 4:[76,98,55]},  // 指の曲げ（付け根・第二・第一関節）
   splay: {1:6, 2:0, 3:-7, 4:-15},            // 指を軽く寄せる（度）
   pivotUp: 120,                              // 振りの中心：弦から客席側へ何mmか
-  elbow: [210, -185, -45],                   // ひじ：前腕をボディの上の縁にのせる
+  elbow: [0.78, -0.50, -0.38],               // 手首→ひじの向き：前腕はウクレレの尾側（ボディのおしり側）から、上の縁にのせて来る
 };
 
 const R3 = (axis, a, v) => { const k = norm(axis), c = Math.cos(a), s = Math.sin(a);
@@ -89,7 +90,7 @@ export function rightHandPose(rig, st){
   const out = [];
   const Wp = place(W);
   out.push({name:'wrist', pos: Wp, fwd: dir(F), dorsal: dir(U)});
-  const E = add(target, CFG.elbow);
+  const E = add(W, mul(norm(CFG.elbow), 260));      // ひじは動かさない（前腕は手首について少しだけ振れる）
   const fa = norm(sub(Wp, E));
   out.push({name:'forearm', pos: Wp, fwd: fa, dorsal: sub(dir(U), mul(fa, dot(dir(U),fa)))});
   for(const j of J) out.push({name: j.name, pos: place(add(W, toW(j.pos))), fwd: norm(dir(toW(j.fwd))), dorsal: norm(dir(toW(j.dorsal)))});

@@ -406,6 +406,8 @@ function tickSong(){
 function startSong(){
   ensureAudio(); stopProg();
   const sg = SONG();
+  // 曲で使うコードの手の形を先に全部計算しておく（演奏中に引っかからないように）
+  for(const b of sg.bars) for(const [c] of b) computePose(getChord(c), view.rig);
   song.e8 = 30/(+songBpm.value);
   const cin = sg.beats*2;
   song.t0 = actx.currentTime + 0.3 + cin*song.e8;     // 1小節目の頭（その前に1小節カウント）
@@ -451,17 +453,44 @@ function rightState(now){
 /* ---------- 描画ループ（動いている時だけ描き直す） ---------- */
 let dirty = true, raf = 0;
 function kick(){ dirty = true; if(!raf) raf = requestAnimationFrame(loop); }
+// 動きをなめらかにする工夫
+//  ・右手の動きは少しだけ「ならす」（急に止まったり跳んだりしない）
+//  ・輪切り図は、手が止まった時だけ描き直す
+//  ・重い端末では、動いている間だけ自動で解像度を下げる
+let rSmooth = null, lastFrame = 0, frameAvg = 16, quality = 1, wasMoving = false;
+function smoothRight(target, now){
+  if(!target){ rSmooth = null; return null; }
+  if(!rSmooth){ rSmooth = {...target}; return rSmooth; }
+  const dt = Math.min(0.1, Math.max(0, (now - (rSmooth.t||now))/1000));
+  const k = 1 - Math.exp(-dt/0.018);
+  rSmooth.theta += (target.theta - rSmooth.theta)*k;
+  rSmooth.lift  += (target.lift  - rSmooth.lift )*k;
+  rSmooth.t = now;
+  return {theta: rSmooth.theta, lift: rSmooth.lift};
+}
 function loop(now){
   raf = 0;
   if(!view || !poseTo) return;
   const handMoving = !!poseFrom;
   const rightMoving = state.rightOn && (prog.running || !!song.running || !!oneShot);
-  if(dirty || handMoving || rightMoving){
-    // 輪切り図は左手が変わった時だけ描き直す（右手だけ動いている時は軽く）
-    view.render(currentPose(now), {...state, right: state.rightOn ? rightState(now) : null, skipSide: !dirty && !handMoving});
+  const moving = handMoving || rightMoving;
+  if(moving && wasMoving){
+    frameAvg = frameAvg*0.9 + Math.min(100, now - lastFrame)*0.1;
+    if(frameAvg > 24 && quality > 0.5) { quality = Math.max(0.5, quality - 0.1); frameAvg = 16; }
+    else if(frameAvg < 17.5 && quality < 1) quality = Math.min(1, quality + 0.02);
+  }
+  lastFrame = now;
+  if(!moving && wasMoving){ quality = 1; dirty = true; }   // 止まったらきれいに描き直す
+  if(dirty || moving){
+    const pose = currentPose(now);
+    const settle = handMoving && !poseFrom;                // 左手の動きがちょうど終わった
+    const right = smoothRight(state.rightOn ? rightState(now) : null, now);
+    view.render(pose, {...state, right, quality: moving ? quality : 1, skipSide: handMoving ? !settle : (!dirty)});
     dirty = false;
   }
-  if(handMoving || rightMoving) raf = requestAnimationFrame(loop);
+  wasMoving = moving;
+  if(moving || poseFrom) raf = requestAnimationFrame(loop);
+  else if(wasMoving) kick();
 }
 
 window.addEventListener('resize', kick);
@@ -487,7 +516,9 @@ createView({
   setChord(state.root+state.type, false);
   window.__ready = true;
   // 残りのコードの手の形も、ひまな時間に先に計算しておく（切り替えが引っかからないように）
-  const rest = Object.keys(CHORDS);
+  // 練習・演奏デモで使うコードを先に
+  const first = new Set([...SONGS.flatMap(sg=>sg.bars.flat().map(c=>c[0])), ...PROGRESSIONS.flatMap(p=>p.chords)]);
+  const rest = [...first, ...Object.keys(CHORDS).filter(c=>!first.has(c))];
   const idle = window.requestIdleCallback || (fn=>setTimeout(()=>fn({timeRemaining:()=>8}), 30));
   const work = dl => { while(rest.length && dl.timeRemaining() > 4) computePose(getChord(rest.shift()), view.rig); if(rest.length) idle(work); };
   idle(work);

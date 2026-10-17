@@ -67,16 +67,34 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
       float wrapL = clamp(dot(normal, normalize(vec3(-0.25,-0.45,0.85)))*0.5+0.5, 0.0, 1.0);
       reflectedLight.indirectDiffuse += diffuseColor.rgb * vec3(0.32,0.09,0.05) * (1.0-wrapL) * 0.9;`);
   };
+  /* 腕は手首の少し先までだけ見せる：手首から30〜85mmの間で、だんだん透明にして消す */
+  function addArmFade(mat, rig, depthOnly){
+    const prev = mat.onBeforeCompile;
+    mat.onBeforeCompile = (sh, r) => {
+      prev && prev.call(mat, sh, r);
+      sh.uniforms.uWristP = {value: rig.fade.p}; sh.uniforms.uWristZ = {value: rig.fade.z};
+      sh.vertexShader = 'uniform vec3 uWristP; uniform vec3 uWristZ; varying float vAlong;\n' +
+        sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vAlong = dot(position - uWristP, uWristZ);');
+      sh.fragmentShader = 'varying float vAlong;\n' +
+        sh.fragmentShader.replace('#include <alphatest_fragment>', `#include <alphatest_fragment>
+          float armFade = 1.0 - smoothstep(0.03, 0.085, vAlong);
+          ${depthOnly ? 'if(armFade < 0.6) discard;' : 'diffuseColor.a *= armFade*armFade*(3.0-2.0*armFade); if(diffuseColor.a < 0.004) discard;'}`);
+    };
+    mat.customProgramCacheKey = () => 'armfade-' + mat.uuid;
+  }
+  const skinLight = skin.onBeforeCompile;   // 右手にも同じ肌の質感を使う
   const rig = await loadHand(skin);
+  addArmFade(skin, rig);
   scene.add(rig.root);
   // 半透明の手：先に「奥行きだけ」を描いてから、いちばん手前の皮膚だけを半透明で描く（指が重なってもにごらない）
   const depthMat = new THREE.MeshBasicMaterial({colorWrite:false});
   const handDepth = new THREE.SkinnedMesh(rig.mesh.geometry, depthMat);
   handDepth.bind(rig.mesh.skeleton, rig.mesh.bindMatrix);
+  addArmFade(depthMat, rig, true);
   handDepth.frustumCulled = false; handDepth.renderOrder = 1; handDepth.visible = false;
   rig.mesh.parent.add(handDepth);
   function setGhost(on){
-    skin.transparent = on; skin.opacity = on ? 0.6 : 1; skin.depthWrite = !on;
+    skin.transparent = true; skin.opacity = on ? 0.6 : 1; skin.depthWrite = !on;   // 腕の先を消すので、いつも透明あり
     skin.emissive.set(on ? '#5a2a18' : '#000000');
     rig.mesh.renderOrder = on ? 2 : 0; handDepth.visible = on;
     rig.mesh.castShadow = !on;
@@ -109,8 +127,9 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     }
   }
   // 右手（ストローク用）。肌の質感は左手と同じ
-  const skinR = skin.clone(); skinR.onBeforeCompile = skin.onBeforeCompile;
+  const skinR = skin.clone(); skinR.onBeforeCompile = skinLight;
   const rigR = await loadHand(skinR, 'right');
+  addArmFade(skinR, rigR); skinR.transparent = true;
   scene.add(rigR.root);
 
   // 輪切りの断面
@@ -155,7 +174,12 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   }
   const project = (cam, p, W, H) => { const v = new THREE.Vector3(...p).project(cam); if(v.z > 1) return null; return [(v.x+1)/2*W, (1-v.y)/2*H]; };
 
+  const basePR = Math.min(window.devicePixelRatio||1, 2);
+  let curPR = basePR;
   function render(pose, opts){
+    // 動いている間は解像度を少し下げる（重い端末でカクカクしないように）
+    const pr = Math.max(0.75, Math.round(basePR*(opts.quality ?? 1)*20)/20);
+    if(pr !== curPR){ curPR = pr; renderer.setPixelRatio(pr); }
     applyPose(rig, pose);
     uke.setStrings(pose.str);
     setGhost(!!opts.ghost);

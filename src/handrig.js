@@ -73,7 +73,9 @@ export async function loadHand(skinMaterial, side='left'){
     m4.makeBasis(vx, vy, vz);
     b.quaternion.setFromRotationMatrix(m4);
   }
-  return { root, mesh, bones, rest, restBasis, lengths, thumbLengths, setBone };
+  // 前腕を手首の少し先で消していくための情報（モデルの元の座標での手首の位置と、腕の方向）
+  const fade = { p: wp.clone(), z: new THREE.Vector3(0,0,1).applyQuaternion(wq) };
+  return { root, mesh, bones, rest, restBasis, lengths, thumbLengths, setBone, fade };
 }
 
 /* モデルは手首の先が丸く閉じているので、その部分を引き伸ばして前腕にする。
@@ -82,7 +84,7 @@ function extendForearm(geo, wrist, wristIdx, forearmIdx){
   const P = geo.attributes.position;
   const qi = wrist.quaternion.clone().invert(), q = wrist.quaternion.clone(), wp = wrist.position.clone();
   const v = new THREE.Vector3();
-  const Z0 = 0.008, Z1 = 0.016, LEN = 0.42;          // メートル
+  const Z0 = 0.008, Z1 = 0.016, LEN = 0.11;          // メートル（表示は手首の少し先まで。先はぼかして消す）
   for(let i=0;i<P.count;i++){
     v.fromBufferAttribute(P, i).sub(wp).applyQuaternion(qi);
     if(v.z <= 0) continue;
