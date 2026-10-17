@@ -1,7 +1,7 @@
 /* =========================================================
    ウクレレ・ハンドガイド（画面の操作・音・説明）
    ========================================================= */
-import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, PROGRESSIONS, CHORDS } from './data.js';
+import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, PROGRESSIONS, CHORDS, SONGS } from './data.js';
 import { computePose, blendPose, HAND_CFG } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
@@ -303,7 +303,7 @@ function tickProg(){
   }
 }
 function startProg(){
-  ensureAudio();
+  ensureAudio(); if(song.running) stopSong();
   prog.running = true; prog.showPos = prog.pos; prog.showBeat = -1; prog.showSlot = -1;
   prog.e8 = 30/(+bpmEl.value);
   prog.t0 = actx.currentTime + 0.45; prog.nextSlot = 0;
@@ -320,13 +320,123 @@ function stopProg(){
 }
 document.getElementById('btnProg').onclick = ()=> prog.running ? stopProg() : startProg();
 
+/* ---------- 演奏デモ（曲） ---------- */
+const song = {idx:0, running:false, timer:null, t0:0, e8:0.3, nextSlot:0, mel:0, notes:[], showBar:-1, lastChord:'', melodyOn:true, endAt:0};
+const SONG = () => SONGS[song.idx];
+const songList = document.getElementById('songList'), songSheet = document.getElementById('songSheet');
+SONGS.forEach((sg,i)=>{
+  const b = document.createElement('button'); b.textContent = sg.title.replace(/（.*）/, '');
+  b.onclick = ()=>{ stopSong(); song.idx = i; songBpm.value = sg.bpm; document.getElementById('songBpmVal').textContent = sg.bpm; renderSong(); setChord(sg.bars[0][0][0]); };
+  songList.appendChild(b);
+});
+const songBpm = document.getElementById('songBpm');
+songBpm.oninput = ()=>{
+  document.getElementById('songBpmVal').textContent = songBpm.value;
+  if(song.running){ const ct = actx.currentTime, ph = (ct - song.t0)/song.e8, e8 = 30/(+songBpm.value); song.t0 = ct - ph*e8; song.e8 = e8; }
+};
+document.getElementById('btnMelody').onclick = e=>{ song.melodyOn = !song.melodyOn; e.currentTarget.classList.toggle('on', song.melodyOn); };
+function renderSong(){
+  const sg = SONG();
+  songList.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on', i===song.idx));
+  document.getElementById('songInfo').innerHTML =
+    `<b>${sg.title}</b><span>${sg.credit}</span><span>キー：${sg.key}・${sg.beats}拍子・右手 ${[...sg.pattern].map(c=>c==='D'?'↓':c==='U'?'↑':'・').join('')}</span><span>${sg.note}</span>` +
+    (sg.melody ? '' : '<span class="muted">※この曲は伴奏（コードとストローク）だけのデモです</span>');
+  document.getElementById('btnMelody').style.display = sg.melody ? '' : 'none';
+  songSheet.innerHTML = sg.bars.map((b,i)=>`<div class="bar${song.running && i===song.showBar ? ' now' : ''}">${b.map(c=>`<span>${c[0]}</span>`).join('')}</div>`).join('');
+}
+function chordAt(sg, k){
+  const spb = sg.beats*2, bar = Math.floor(k/spb), beat = (k%spb)/2;
+  let acc = 0;
+  for(const [c, n] of sg.bars[bar]){ if(beat < acc + n) return c; acc += n; }
+  return sg.bars[bar][sg.bars[bar].length-1][0];
+}
+function playNote(midi, when, dur){
+  const f = 440*Math.pow(2,(midi-69)/12);
+  const g = actx.createGain(), lp = actx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 2600;
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(0.11, when+0.03);
+  g.gain.exponentialRampToValueAtTime(0.07, when+0.15);
+  g.gain.setValueAtTime(0.07, when+Math.max(0.16, dur-0.08));
+  g.gain.exponentialRampToValueAtTime(0.0001, when+dur+0.05);
+  for(const [type, mult, v] of [['triangle',1,1],['sine',2,0.25]]){
+    const o = actx.createOscillator(), og = actx.createGain();
+    o.type = type; o.frequency.value = f*mult; og.gain.value = v;
+    // ほんの少しビブラート
+    const lfo = actx.createOscillator(), lg = actx.createGain(); lfo.frequency.value = 5.2; lg.gain.value = f*mult*0.004;
+    lfo.connect(lg); lg.connect(o.frequency); lfo.start(when); lfo.stop(when+dur+0.1);
+    o.connect(og); og.connect(g); o.start(when); o.stop(when+dur+0.1);
+  }
+  g.connect(lp); lp.connect(actx.destination);
+}
+function tickSong(){
+  if(!song.running || song.running === 'ending') return;
+  const sg = SONG(), spb = sg.beats*2, total = sg.bars.length*spb;
+  const ahead = actx.currentTime + 0.12;
+  // メロディ
+  while(song.melodyOn && song.mel < song.notes.length && song.t0 + song.notes[song.mel].beat*2*song.e8 < ahead){
+    const n = song.notes[song.mel++];
+    if(n.midi != null) playNote(n.midi, song.t0 + n.beat*2*song.e8, n.len*2*song.e8*0.95);
+  }
+  if(!song.melodyOn) while(song.mel < song.notes.length && song.t0 + song.notes[song.mel].beat*2*song.e8 < ahead) song.mel++;
+  // 伴奏
+  while(song.t0 + song.nextSlot*song.e8 < ahead){
+    const k = song.nextSlot, when = song.t0 + k*song.e8;
+    const delay = Math.max(0,(when-actx.currentTime)*1000);
+    song.nextSlot++;
+    if(k < 0){                                   // カウント（1小節）
+      if((k & 1) === 0) click(when, k === -spb);
+      continue;
+    }
+    if(k >= total){                              // おしまい
+      setTimeout(()=>stopSong(), delay + 600);
+      song.running = 'ending';
+      return;
+    }
+    const slot = k % spb, bar = Math.floor(k/spb), last = bar === sg.bars.length-1;
+    const c = chordAt(sg, k);
+    if(c !== song.lastChord){ song.lastChord = c; setTimeout(()=>{ if(song.running) setChord(c); }, Math.max(0, delay-140)); }
+    const st = last ? (slot===0 ? 'D' : '-') : sg.pattern[slot];
+    const chord = getChord(c);
+    if(st==='D') playStroke(chord, 'D', when, slot===0 ? 0.30 : 0.24);
+    if(st==='U') playStroke(chord, 'U', when, 0.15);
+    if(slot===0) setTimeout(()=>{ if(song.running){ song.showBar = bar; renderSong(); } }, delay);
+  }
+}
+function startSong(){
+  ensureAudio(); stopProg();
+  const sg = SONG();
+  song.e8 = 30/(+songBpm.value);
+  const cin = sg.beats*2;
+  song.t0 = actx.currentTime + 0.3 + cin*song.e8;     // 1小節目の頭（その前に1小節カウント）
+  song.nextSlot = -cin; song.lastChord = ''; song.showBar = -1;
+  // メロディの開始位置（拍）
+  let b = -(sg.pickup||0); song.notes = []; song.mel = 0;
+  if(sg.melody) for(const [midi, len] of sg.melody){ song.notes.push({midi, beat:b, len}); b += len; }
+  song.running = true;
+  setChord(sg.bars[0][0][0]);
+  document.getElementById('btnSong').textContent = '■ ストップ';
+  song.timer = setInterval(tickSong, 25);
+  tickSong(); kick();
+}
+function stopSong(){
+  song.running = false; clearInterval(song.timer);
+  document.getElementById('btnSong').textContent = '▶ 演奏する';
+  renderSong(); kick();
+}
+document.getElementById('btnSong').onclick = ()=> song.running ? stopSong() : startSong();
+renderSong();
+
 // 右手の今の状態（振りの角度・浮かせる量）
 const REST = {theta: -STRUM_AMP, lift: 7};
 function rightState(now){
-  if(prog.running && actx){
-    const ph = (actx.currentTime - prog.t0)/prog.e8;
+  const act = prog.running ? {t0:prog.t0, e8:prog.e8, p:PATTERNS[prog.pat].p}
+            : song.running ? {t0:song.t0, e8:song.e8, p:SONG().pattern, end:SONG().bars.length*SONG().beats*2} : null;
+  if(act && actx){
+    const ph = (actx.currentTime - act.t0)/act.e8;
     if(ph < -0.5) return REST;
-    return strumState(ph, PATTERNS[prog.pat].p);
+    if(act.end != null && ph > act.end - SONG().beats*2 + 0.6) return {theta: STRUM_AMP, lift: 6};   // 最後のジャーンのあと
+    return strumState(ph, act.p);
   }
   if(oneShot){
     const t = now - oneShot.start;
@@ -345,7 +455,7 @@ function loop(now){
   raf = 0;
   if(!view || !poseTo) return;
   const handMoving = !!poseFrom;
-  const rightMoving = state.rightOn && (prog.running || !!oneShot);
+  const rightMoving = state.rightOn && (prog.running || !!song.running || !!oneShot);
   if(dirty || handMoving || rightMoving){
     // 輪切り図は左手が変わった時だけ描き直す（右手だけ動いている時は軽く）
     view.render(currentPose(now), {...state, right: state.rightOn ? rightState(now) : null, skipSide: !dirty && !handMoving});

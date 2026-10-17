@@ -1,24 +1,25 @@
 /* =========================================================
    右手のストローク
-   ・手の形：人差し指を軽く伸ばし、ほかの指はゆるく握る。親指は人差し指の横に添える
+   ・手の形：ピックを軽く持つような形。人差し指は丸めて、第一関節〜爪の背中側で弦をこする。中指〜小指はその後ろに軽く握り込む。
+             親指の腹は人差し指の第一関節の横にそっと当てる
    ・動き　：ひじの先あたりを中心に、手首から先を振り子のように振る
              ダウン（4弦→1弦）は人差し指の爪、アップ（1弦→4弦）は指の腹で弦をこする
    ・弾かない拍（空ピッキング）でも手は止めず、弦から少し浮かせて振り続ける
    ========================================================= */
 import { fretX, strY, stringZ, add, sub, mul, dot, cross, norm, vlen, DEG } from './geom.js';
 import { jointName, THUMB_JOINTS } from './handrig.js';
-import { makeThumbModel, thumbFK } from './thumb.js';
+import { makeThumbModel, solveThumbTo } from './thumb.js';
 
 export const STRUM_X = fretX(16.5);          // 弾く場所：ネックとボディのつなぎ目あたり
 export const STRUM_AMP = 0.30;               // 振りの大きさ（ラジアン）
 
 const CFG = {
-  F: [-0.14, 0.97, -0.18],                   // 手首→指の付け根（指は床の方へ。ボディの面にほぼ沿わせる）
-  N: [0.00, -0.18, -0.98],                   // 手のひらはボディの方を向く（手の甲は客席側）
-  curl: {1:[58,62,28], 2:[66,78,40], 3:[70,80,40], 4:[72,80,40]},  // 指の曲げ（付け根・第二・第一関節）
-  thumb: {cmcF:30, cmcA:-12, mcp:25, ip:15},
-  pivotUp: 165,                              // 振りの中心：弦から客席側へ何mmか
-  elbow: [175, -175, 35],                    // ひじ：ボディの上の縁に前腕をのせる
+  F: [-0.08, 0.98, -0.17],                   // 手首→指の付け根（床の方へ、少しボディ側へ傾ける）
+  N: [0.00, -0.17, -0.98],                   // 手のひらはボディと4弦側を向く（手の甲は客席側）
+  curl:  {1:[30,70,75], 2:[66,95,55], 3:[72,98,55], 4:[76,98,55]},  // 指の曲げ（付け根・第二・第一関節）
+  splay: {1:6, 2:0, 3:-7, 4:-15},            // 指を軽く寄せる（度）
+  pivotUp: 120,                              // 振りの中心：弦から客席側へ何mmか
+  elbow: [210, -185, -45],                   // ひじ：前腕をボディの上の縁にのせる
 };
 
 const R3 = (axis, a, v) => { const k = norm(axis), c = Math.cos(a), s = Math.sin(a);
@@ -29,9 +30,13 @@ function localHand(rig){
   if(rig._strumLocal) return rig._strumLocal;
   const palm = [0,-1,0];
   const J = [];
+  const radial = norm(sub(rig.rest[jointName(1,1)], rig.rest[jointName(2,1)]));   // 人差し指側
   for(let f=1; f<=4; f++){
     const M = rig.rest[jointName(f,0)], K = rig.rest[jointName(f,1)], T = rig.rest[jointName(f,4)];
-    const d0 = norm(sub(T,K));
+    let d0 = norm(sub(T,K));
+    // 指を中指の方へ少し寄せる
+    const sp = CFG.splay[f]*DEG;
+    d0 = norm(add(mul(d0, Math.cos(sp)), mul(radial, -Math.sin(sp))));
     const n1 = norm(sub(palm, mul(d0, dot(d0,palm))));
     const L = rig.lengths[f], c = CFG.curl[f];
     const pts = [K]; let a = 0, p = K;
@@ -44,16 +49,20 @@ function localHand(rig){
       J.push({name: jointName(f,i+1), pos: pts[i], fwd, dorsal: cross(fwd, axis), f, i: i+1});
     }
   }
-  rig.thumbModel ||= makeThumbModel(THUMB_JOINTS.map(n=>rig.rest[n]), THUMB_JOINTS.map(n=>rig.restBasis[n]), palm);
-  const th = thumbFK(rig.thumbModel, CFG.thumb);
+  // 親指：腹を人差し指の第一関節の横（親指側・少し手のひら側）に当てる
+  rig.thumbModel ||= makeThumbModel(THUMB_JOINTS.map(n=>rig.rest[n]), THUMB_JOINTS.map(n=>rig.restBasis[n]), palm, rig.rest[jointName(1,1)]);
+  const iP = J.find(j=>j.name===jointName(1,2)).pos, iD = J.find(j=>j.name===jointName(1,3)).pos;
+  const thTarget = add(add(mul(add(iP,iD),0.5), mul(radial, 9)), mul(palm, 2));
+  const th = solveThumbTo(rig.thumbModel, thTarget); if(typeof window!=='undefined') window.__rthumb = {ang: th.ang, cost: th.cost};
   for(let i=0;i<4;i++){
     const B = rig.thumbModel.restBasis[i], R = th.Rs[i];
     const mv = v => [dot(R[0],v), dot(R[1],v), dot(R[2],v)];
     J.push({name: THUMB_JOINTS[i], pos: th.pts[i], fwd: mv(mul(B[2],-1)), dorsal: mv(B[1])});
   }
   // 人差し指の爪のあたり（弦に当たる点）
-  const it = J.find(j=>j.name===jointName(1,4));
-  const hit = add(it.pos, mul(it.fwd, 6));
+  // 弦に当たるのは、丸めた人差し指の第一関節〜爪の背中側
+  const iDj = J.find(j=>j.name===jointName(1,3)), iTj = J.find(j=>j.name===jointName(1,4));
+  const hit = add(mul(add(iDj.pos, iTj.pos), 0.5), mul(norm(iDj.dorsal), 7));
   rig._strumLocal = {J, hit};
   return rig._strumLocal;
 }

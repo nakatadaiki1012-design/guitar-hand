@@ -87,6 +87,15 @@
   .pattern .st.ghost b{color:#6b5848}
   .pattern .st.on{background:linear-gradient(180deg,#ffbf66,#ff9a3d);border-color:#ffbf66}
   .pattern .st.on b,.pattern .st.on small{color:#2b1a0c}
+  .song-info{display:flex;flex-direction:column;gap:2px;margin-top:10px;font-size:13px;color:var(--sub)}
+  .song-info b{font-size:17px;color:#fff}
+  .song-info .muted{color:#8c7a69}
+  .song-sheet{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+  @media (max-width:640px){.song-sheet{grid-template-columns:repeat(2,1fr)}}
+  .song-sheet .bar{display:flex;gap:8px;justify-content:center;padding:10px 4px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-weight:800;font-size:17px}
+  .song-sheet .bar span+span{color:var(--sub)}
+  .song-sheet .bar.now{background:linear-gradient(180deg,#ffbf66,#ff9a3d);color:#2b1a0c;border-color:#ffbf66}
+  .song-sheet .bar.now span+span{color:#5a3412}
   .beats{display:flex;gap:6px;margin-left:8px}
   .beat{width:14px;height:14px;border-radius:50%;background:#3a2c22;border:1px solid var(--line)}
   .beat.on{background:var(--accent);box-shadow:0 0 10px var(--accent)}
@@ -183,6 +192,22 @@
       <div class="beats" id="beats"><div class="beat"></div><div class="beat"></div><div class="beat"></div><div class="beat"></div></div>
     </div>
     <p class="cap">4拍ごとにコードが変わります。4拍目で次のコードが光るので、先に指の準備をしましょう。右手は弾かない拍でも止めずに振り続けるのがコツ（3Dの右手も空振りしています）。上の表示を「右手」「両手」にすると動きがよく見えます。最初はゆっくり（テンポ50くらい）がおすすめ。</p>
+  </section>
+</main>
+<main style="padding-top:0">
+  <section class="panel">
+    <h2>⑤ 演奏デモ（曲に合わせて両手が動きます）</h2>
+    <div class="row" id="songList"></div>
+    <div class="song-info" id="songInfo"></div>
+    <div class="song-sheet" id="songSheet"></div>
+    <div class="controls">
+      <button class="big play" id="btnSong">▶ 演奏する</button>
+      <button id="btnMelody" class="on">メロディも鳴らす</button>
+      <span class="label" style="min-width:auto">テンポ</span>
+      <input type="range" id="songBpm" min="50" max="140" value="100">
+      <span id="songBpmVal" style="font-size:13px;color:var(--sub)">100</span>
+    </div>
+    <p class="cap">1小節カウントしてから始まります。上の3D表示を「両手」にすると、左手のコードチェンジと右手のストロークを一緒に見られます。曲はどれも著作権の切れた曲です。</p>
   </section>
 </main>
 <footer>標準チューニング（G・C・E・A）。右利き用。手の大きさは平均的な大人（コンサートサイズのウクレレ）で計算しています。</footer>

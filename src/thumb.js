@@ -18,14 +18,14 @@ const mv = (A,v) => [dot(A[0],v), dot(A[1],v), dot(A[2],v)];
 const I3 = [[1,0,0],[0,1,0],[0,0,1]];
 
 // 関節の動く範囲（度）と、力を抜いたときの角度
-const LIMITS = { cmcF:[-15,45], cmcA:[-25,40], mcp:[0,55], ip:[-10,75] };
+const LIMITS = { cmcF:[-15,45], cmcA:[-45,40], mcp:[0,55], ip:[-10,75] };   // モデルの基本姿勢は親指がかなり開いているので、閉じる側は広め
 const RELAX  = { cmcF:10, cmcA:5, mcp:15, ip:15 };
 const KEYS = ['cmcF','cmcA','mcp','ip'];
 const THUMB_R = [11, 10, 9.2];        // 親指の太さ（半径）
 
 /* 手のモデルの基本姿勢（手首から見た座標）から、親指の形を作る準備
    restPos: 4つの関節位置 / restBasis: 各関節の向き（X,Y,Z軸） / palm: 手のひら側の向き */
-export function makeThumbModel(restPos, restBasis, palm){
+export function makeThumbModel(restPos, restBasis, palm, awayFrom){
   const d = [0,1,2].map(i=>sub(restPos[i+1], restPos[i]));
   // 曲げる軸：骨の向きと手のひら方向の両方に直交する軸。指先が手のひら側に動く向きを＋にする
   const flexAxis = i => {
@@ -37,6 +37,12 @@ export function makeThumbModel(restPos, restBasis, palm){
   const axF = [0,1,2].map(flexAxis);
   // 付け根の「開き」の軸：骨の向きと曲げ軸に直交（親指を人差し指から離す向きを＋）
   let axA = norm(cross(d[0], axF[0]));
+  // 右手・左手で向きが逆になるので、「人差し指から離れる向き」が＋になるようにそろえる（指定がある時）
+  if(awayFrom){
+    const tip0 = add(restPos[0], add(d[0], add(d[1], d[2])));
+    const moved = add(restPos[0], mv(rot(axA, 0.2), add(d[0], add(d[1], d[2]))));
+    if(vlen(sub(moved, awayFrom)) < vlen(sub(tip0, awayFrom))) axA = mul(axA, -1);
+  }
   return { restPos, restBasis, d, axF, axA };
 }
 
@@ -107,6 +113,37 @@ export function solveThumb(M, toW, toWd, opts){
         const ang = {...best, [k]: Math.min(LIMITS[k][1], Math.max(LIMITS[k][0], best[k]+sgn*step))};
         const v = cost(ang);
         if(v < bc - 1e-6){ bc = v; best = ang; improved = true; }
+      }
+    }
+  }
+  return { ang: best, cost: bc, ...thumbFK(M, best) };
+}
+
+/* 親指の腹を、手の中の目標点（手首から見た座標）にそっと当てる形をさがす（右手のピック持ち用） */
+export function solveThumbTo(M, target){
+  const cost = ang => {
+    const { pts, Rs } = thumbFK(M, ang);
+    const nail = norm(mv(Rs[2], M.restBasis[2][1]));
+    const fwd = norm(sub(pts[3], pts[2]));
+    const pad = add(add(pts[3], mul(fwd, 1)), mul(nail, -6));
+    let c = Math.pow(vlen(sub(pad, target)), 2);
+    for(const k of KEYS) c += Math.pow((ang[k]-RELAX[k])/30, 2) * 6;
+    return c;
+  };
+  let best = {...RELAX}, bc = cost(best);
+  for(let a=LIMITS.cmcF[0]; a<=LIMITS.cmcF[1]; a+=8)
+    for(let b=LIMITS.cmcA[0]; b<=LIMITS.cmcA[1]; b+=8)
+      for(let m=LIMITS.mcp[0]; m<=LIMITS.mcp[1]; m+=11)
+        for(let i=LIMITS.ip[0]; i<=LIMITS.ip[1]; i+=12){
+          const ang = {cmcF:a, cmcA:b, mcp:m, ip:i}, v = cost(ang);
+          if(v < bc){ bc = v; best = ang; }
+        }
+  for(let step=4; step>0.3; step*=0.5){
+    let improved = true;
+    while(improved){ improved = false;
+      for(const k of KEYS) for(const sgn of [-1,1]){
+        const ang = {...best, [k]: Math.min(LIMITS[k][1], Math.max(LIMITS[k][0], best[k]+sgn*step))};
+        const v = cost(ang); if(v < bc - 1e-6){ bc = v; best = ang; improved = true; }
       }
     }
   }
