@@ -396,8 +396,8 @@ function renderSong(){
   songList.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('on', i===song.idx));
   document.getElementById('songInfo').innerHTML =
     `<b>${sg.title}</b><span>${sg.credit}</span><span>キー：${sg.key}・${sg.beats}拍子・右手 ${[...sg.pattern].map(c=>c==='D'?'↓':c==='U'?'↑':'・').join('')}</span><span>${sg.note}</span>` +
-    (sg.melody ? '' : '<span class="muted">※この曲は伴奏（コードとストローク）だけのデモです</span>');
-  document.getElementById('btnMelody').style.display = sg.melody ? '' : 'none';
+    ((sg.melody || sg.score) ? '' : '<span class="muted">※この曲は伴奏（コードとストローク）だけのデモです</span>');
+  document.getElementById('btnMelody').style.display = (sg.melody || sg.score) ? '' : 'none';
   songSheet.innerHTML = sg.bars.map(b=>`<div class="bar">${b.map(c=>`<span>${c[0]}</span>`).join('')}</div>`).join('');
   song.hl = null; highlightSong(-1);
 }
@@ -410,6 +410,17 @@ function chordAt(sg, k){
   let acc = 0;
   for(const [c, n] of sg.bars[bar]){ if(beat < acc + n) return c; acc += n; }
   return sg.bars[bar][sg.bars[bar].length-1][0];
+}
+// オルゴールのような音（チンと鳴って、ゆっくり消える）
+function playBell(midi, when){
+  const f = 440*Math.pow(2,(midi-69)/12), g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, when); g.gain.exponentialRampToValueAtTime(0.06, when+0.005);
+  g.gain.exponentialRampToValueAtTime(0.0001, when+1.6);
+  for(const [mult, v] of [[1,1],[3.01,0.18],[5.2,0.05]]){
+    const o = actx.createOscillator(), og = actx.createGain(); o.type = 'sine'; o.frequency.value = f*mult; og.gain.value = v;
+    o.connect(og); og.connect(g); o.start(when); o.stop(when+1.7);
+  }
+  g.connect(actx.destination);
 }
 function playNote(midi, when, dur){
   const f = 440*Math.pow(2,(midi-69)/12);
@@ -438,7 +449,7 @@ function tickSong(){
   const nt = b => slotTime(song, b*2);                       // 拍 → 時刻（スイングも反映）
   while(song.melodyOn && song.mel < song.notes.length && nt(song.notes[song.mel].beat) < ahead){
     const n = song.notes[song.mel++];
-    if(n.midi != null){ const a = nt(n.beat); playNote(n.midi, a, (nt(n.beat+n.len)-a)*0.95); }
+    if(n.midi != null){ const a = nt(n.beat); if(n.bell) playBell(n.midi, a); else playNote(n.midi, a, (nt(n.beat+n.len)-a)*0.95); }
   }
   if(!song.melodyOn) while(song.mel < song.notes.length && nt(song.notes[song.mel].beat) < ahead) song.mel++;
   // 伴奏
@@ -476,6 +487,7 @@ function startSong(){
   // メロディの開始位置（拍）
   let b = -(sg.pickup||0); song.notes = []; song.mel = 0;
   if(sg.melody) for(const [midi, len] of sg.melody){ song.notes.push({midi, beat:b, len}); b += len; }
+  if(sg.score){ for(const [midi, beat] of sg.score) song.notes.push({midi, beat, len:1, bell:true}); song.notes.sort((x,y)=>x.beat-y.beat); }
   song.running = true;
   setChord(sg.bars[0][0][0]);
   document.getElementById('btnSong').textContent = '■ ストップ';
