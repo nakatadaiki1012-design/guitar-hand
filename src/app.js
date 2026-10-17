@@ -1,7 +1,7 @@
 /* =========================================================
    ウクレレ・ハンドガイド（画面の操作・音・説明）
    ========================================================= */
-import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, PROGRESSIONS } from './data.js';
+import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, PROGRESSIONS, CHORDS } from './data.js';
 import { computePose, blendPose, HAND_CFG } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
@@ -332,6 +332,11 @@ createView({
   document.getElementById('loading')?.remove();
   setChord(state.root+state.type, false);
   window.__ready = true;
+  // 残りのコードの手の形も、ひまな時間に先に計算しておく（切り替えが引っかからないように）
+  const rest = Object.keys(CHORDS);
+  const idle = window.requestIdleCallback || (fn=>setTimeout(()=>fn({timeRemaining:()=>8}), 30));
+  const work = dl => { while(rest.length && dl.timeRemaining() > 4) computePose(getChord(rest.shift()), view.rig); if(rest.length) idle(work); };
+  idle(work);
 }).catch(err=>{
   console.error(err);
   document.getElementById('mainWrap').innerHTML = '<p style="padding:30px;color:#c9b6a3">この端末では3D表示が使えません（WebGLが無効です）。</p>';
