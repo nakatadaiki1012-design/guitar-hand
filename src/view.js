@@ -247,7 +247,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
         }
       }
     }
-    if(opts.split) html += `<div class="splitline" style="left:${W}px"></div><div class="vname" style="left:${W+8}px">${VIEWS[view2].label||''}</div>`;
+    if(opts.split) html += `<div class="splitline" style="left:${W}px"></div>`;
     if(mainOverlay._html !== html){ mainOverlay._html = html; mainOverlay.innerHTML = html; }   // 変わった時だけ書き換える
     if(opts.skipSide || sideCanvas.clientWidth === 0) return;   // 輪切り図が見えていない時は描かない
 

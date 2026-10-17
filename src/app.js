@@ -231,13 +231,14 @@ function segment(id, fn){
   });
 }
 let viewNameNow = 'diag';
-segment('viewSeg', v=>{ viewNameNow = v; document.getElementById('viewName').textContent = VIEWS[v].name; if(view) view.setView(v); });
+segment('viewSeg', v=>{ viewNameNow = v; if(view) view.setView(v); });
 segment('view2Seg', v=>{ if(view) view.setView2(v); });
 document.getElementById('btnSplit').onclick = e=>{
   state.split = !state.split;
   e.currentTarget.classList.toggle('on', state.split);
-  document.getElementById('view2Bar').hidden = !state.split;
+  document.getElementById('view2Seg').hidden = !state.split;
   document.getElementById('handView').classList.toggle('split', state.split);
+  document.getElementById('mainWrap').classList.toggle('split', state.split);
   kick();
 };
 document.querySelectorAll('.swingBtn').forEach(b=>b.onclick = ()=>{
@@ -266,6 +267,7 @@ function heardTime(){
 }
 /* スイング：「タッ・カ・タッ・カ」の、裏の8分音符を少し遅らせる。
    u = まっすぐなリズムでの位置（8分音符単位）、warp(u) = スイングした時の時間の位置 */
+const HAND_LEAD_L = 0.12, HAND_LEAD_R = 0.04;                 // 手を音より先に動かす秒数
 const SWING = 0.64;                                          // 1拍の中で裏拍が来る位置（0.5=まっすぐ、0.667=3連符）
 const swingR = () => state.swing ? SWING : 0.5;
 function warp(u){ const b = Math.floor(u/2), f = u/2 - b, r = swingR();
@@ -533,7 +535,11 @@ function loop(now){
   raf = 0;
   if(!view || !poseTo) return;
   const pl = playing();
-  const ph = pl ? unwarp((heardTime() - pl.o.t0)/pl.o.e8) : 0;   // 今どの8分音符か（スイングを戻して数える）
+  // 手の動きは音より少しだけ先に（目で見て準備できるように）：左手0.12秒・右手0.04秒
+  const tNow = pl ? heardTime() - pl.o.t0 : 0;
+  const ph  = pl ? unwarp(tNow/pl.o.e8) : 0;                       // 今どの8分音符か（スイングを戻して数える）
+  const phL = pl ? unwarp((tNow + HAND_LEAD_L)/pl.o.e8) : 0;
+  const phR = pl ? unwarp((tNow + HAND_LEAD_R)/pl.o.e8) : 0;
   const handMoving = !!poseFrom;
   const active = !!pl || !!oneShot;
   const showRight = state.rightMode === 'always' || (state.rightMode === 'playing' && active);
@@ -548,12 +554,12 @@ function loop(now){
   if(dirty || moving){
     let pose;
     if(pl){
-      pose = musicPose(pl, ph);
+      pose = musicPose(pl, phL);
       if(pl.o === prog) highlightProg(ph < 0 ? -1 : (prog.pos + Math.floor(ph/8)) % prog.list.length, ph < 0 ? -1 : Math.floor(ph) % 8);
       else highlightSong(ph < 0 || ph >= pl.end ? -1 : Math.floor(ph/pl.spb));
     } else pose = currentPose(now);
     const settle = handMoving && !poseFrom;                // 左手の動きがちょうど終わった
-    const right = smoothRight(showRight ? rightState(now, pl, ph) : null, now);
+    const right = smoothRight(showRight ? rightState(now, pl, phR) : null, now);
     view.render(pose, {...state, right, quality: moving ? quality : 1,
       skipSide: pl ? true : handMoving ? !settle : !dirty});
     dirty = false;
@@ -582,7 +588,6 @@ createView({
   view = v; window.__view = v;
   view.onChange(kick);
   document.getElementById('loading')?.remove();
-  document.getElementById('viewName').textContent = VIEWS[viewNameNow].name;
   setChord(state.root+state.type, false);
   window.__ready = true;
   // 残りのコードの手の形も、ひまな時間に先に計算しておく（切り替えが引っかからないように）
