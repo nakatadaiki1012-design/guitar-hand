@@ -54,3 +54,6 @@ WebGL が使えるブラウザ（Chrome / Edge / Safari / Firefox の最近の�
 
 ## ライセンス表記
 手の3Dモデル：WebXR Input Profiles（Copyright (c) 2019 Amazon, MIT License）。3D表示：three.js（MIT License）。
+
+## 公開（Cloudflare）
+- `wrangler.jsonc` の設定で、デプロイ前に `npm run build` を実行し、`dist/index.html` だけを公開します（リポジトリ全体や `node_modules` は上げません）。Cloudflare 側のデプロイコマンドは `npx wrangler deploy` のままでOKです。

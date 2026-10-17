@@ -1,0 +1,10 @@
+// Cloudflare Workers で公開するための設定
+// ・デプロイの前に npm run build で dist/index.html を作る
+// ・公開するのは dist/ の中だけ（リポジトリ全体や node_modules は上げない）
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ukulele-guide",
+  "compatibility_date": "2026-10-12",
+  "build": { "command": "npm run build" },
+  "assets": { "directory": "./dist" }
+}
