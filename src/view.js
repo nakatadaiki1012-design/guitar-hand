@@ -6,7 +6,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildUkulele, neckSectionShape } from './uke.js';
 import { loadHand, applyPose } from './handrig.js';
-import { slotCenter, halfW, strY, stringZ, STRING_R, DEG } from './geom.js';
+import { slotCenter, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG } from './geom.js';
 import { STRING_NAMES, FINGER_COLORS, FINGER_NAMES } from './data.js';
 
 export const VIEWS = {
@@ -66,6 +66,45 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   };
   const rig = await loadHand(skin);
   scene.add(rig.root);
+  // 半透明の手：先に「奥行きだけ」を描いてから、いちばん手前の皮膚だけを半透明で描く（指が重なってもにごらない）
+  const depthMat = new THREE.MeshBasicMaterial({colorWrite:false});
+  const handDepth = new THREE.SkinnedMesh(rig.mesh.geometry, depthMat);
+  handDepth.bind(rig.mesh.skeleton, rig.mesh.bindMatrix);
+  handDepth.frustumCulled = false; handDepth.renderOrder = 1; handDepth.visible = false;
+  rig.mesh.parent.add(handDepth);
+  function setGhost(on){
+    skin.transparent = on; skin.opacity = on ? 0.6 : 1; skin.depthWrite = !on;
+    skin.emissive.set(on ? '#5a2a18' : '#000000');
+    rig.mesh.renderOrder = on ? 2 : 0; handDepth.visible = on;
+    rig.mesh.castShadow = !on;
+    skin.needsUpdate = true;
+  }
+
+  // 押さえる場所の印（指の色の丸）と、弦に当たっているところの光る輪
+  const marks = new THREE.Group(); scene.add(marks);
+  const markMats = FINGER_COLORS.map(c => c ? new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:0.9, depthWrite:false}) : null);
+  const ringMats = FINGER_COLORS.map(c => c ? new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:1, depthTest:false}) : null);
+  const glowTex = (()=>{ const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+    const gr = g.createRadialGradient(32,32,0,32,32,32); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(.35,'rgba(255,255,255,.6)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
+  function placeMarks(pose, ghost){
+    marks.clear();
+    const chord = pose.chord;
+    for(let s=0;s<4;s++){
+      const info = pose.str[s]; if(!info) continue;
+      const f = chord.fingers[s] || 1;
+      const x = info.contact, y = strY(s, x);
+      // 指板の上の丸
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(4.6, 32), markMats[f]);
+      disc.position.set(x, y, 0.08); disc.renderOrder = 3; marks.add(disc);
+      // 弦が指に当たって沈んでいるところ：光る輪（手を透かして見えるように、いちばん手前に描く）
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.45, 8, 28), ringMats[f]);
+      ring.position.set(x, y, FRET_TOP + STRING_R[s] + 0.2); ring.rotation.y = Math.PI/2; ring.renderOrder = 10;
+      ring.visible = ghost; marks.add(ring);
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, color:FINGER_COLORS[f], transparent:true, depthTest:false, depthWrite:false, opacity: ghost ? 0.9 : 0.0}));
+      glow.position.set(x, y, FRET_TOP + 1.2); glow.scale.set(13,13,1); glow.renderOrder = 9; marks.add(glow);
+    }
+  }
   // 輪切りの断面
   const cap = new THREE.Group(); cap.visible = false; scene.add(cap);
   const capNeck = new THREE.MeshStandardMaterial({color:'#a8713f', roughness:0.7, side:THREE.DoubleSide});
@@ -110,6 +149,8 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   function render(pose, opts){
     applyPose(rig, pose);
     uke.setStrings(pose.str);
+    setGhost(!!opts.ghost);
+    placeMarks(pose, !!opts.ghost);
     // コードが変わったら見る中心も少しずらす（カメラごと平行移動）
     const nt = new THREE.Vector3(...pose.target);
     if(nt.distanceTo(target) > 0.01){

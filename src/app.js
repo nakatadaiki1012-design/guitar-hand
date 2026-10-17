@@ -6,7 +6,7 @@ import { computePose, blendPose, HAND_CFG } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
 
-const state = {root:'C', type:'', mirror:false, badges:true, focus:0, vib:[0,0,0,0]};
+const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, focus:0, vib:[0,0,0,0]};
 let view = null, rig = null;
 let poseFrom = null, poseTo = null, tweenStart = 0;
 const TWEEN_MS = 450;
@@ -224,6 +224,7 @@ function toggleBtn(id, key){
   b.onclick = ()=>{ state[key] = !state[key]; b.classList.toggle('on', state[key]); kick(); };
 }
 toggleBtn('btnBadges','badges');
+toggleBtn('btnGhost','ghost');
 toggleBtn('btnMirror','mirror');
 document.querySelectorAll('[data-view]').forEach(b=>b.onclick = ()=>{
   document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('on', x===b));

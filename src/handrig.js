@@ -25,8 +25,17 @@ export async function loadHand(skinMaterial){
     if(o.isBone || (o.name && /finger|thumb|wrist/.test(o.name) && !o.isMesh)) bones[o.name] = o;
     if(o.isSkinnedMesh) mesh = o;
   });
-  extendForearm(mesh.geometry, bones['wrist']);
+  // 前腕の骨を足す（手首で腕を曲げられるように）。基本姿勢では手首の骨と同じ位置・向き
+  const forearm = new THREE.Bone(); forearm.name = 'forearm';
+  forearm.position.copy(bones['wrist'].position); forearm.quaternion.copy(bones['wrist'].quaternion);
+  bones['wrist'].parent.add(forearm); bones['forearm'] = forearm;
+  const sk = mesh.skeleton;
+  const wristIdx = sk.bones.indexOf(bones['wrist']);
+  const newBones = [...sk.bones, forearm];
+  const newInv = [...sk.boneInverses.map(m=>m.clone()), sk.boneInverses[wristIdx].clone()];
+  extendForearm(mesh.geometry, bones['wrist'], wristIdx, sk.bones.length);
   mesh.geometry = smoothSkinnedGeometry(mesh.geometry, 2);
+  mesh.bind(new THREE.Skeleton(newBones, newInv), mesh.bindMatrix);
   mesh.material = skinMaterial;
   mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.frustumCulled = false;
@@ -66,23 +75,31 @@ export async function loadHand(skinMaterial){
 
 /* モデルは手首の先が丸く閉じているので、その部分を引き伸ばして前腕にする。
    手首の関節から見て（指先が -Z）、z=0〜16mm はほぼ同じ太さの筒、16〜24mm が丸いふた（実測） */
-function extendForearm(geo, wrist){
+function extendForearm(geo, wrist, wristIdx, forearmIdx){
   const P = geo.attributes.position;
   const qi = wrist.quaternion.clone().invert(), q = wrist.quaternion.clone(), wp = wrist.position.clone();
   const v = new THREE.Vector3();
   const Z0 = 0.008, Z1 = 0.016, LEN = 0.42;          // メートル
   for(let i=0;i<P.count;i++){
     v.fromBufferAttribute(P, i).sub(wp).applyQuaternion(qi);
+    if(v.z <= 0) continue;
+    let z = v.z, t = 0;
+    if(v.z > Z0){
+      if(v.z < Z1){ t = (v.z-Z0)/(Z1-Z0); z = Z0 + t*LEN; }
+      else { t = 1; z = Z0 + LEN + (v.z-Z1)*2.5; }
+    }
+    // 手首より腕側は「前腕の骨」に少しずつ受け渡す（手首でなめらかに曲がる）
+    const wf = Math.min(1, Math.max(0, (z-0.003)/0.045)), sm = wf*wf*(3-2*wf);
+    geo.attributes.skinIndex.setXYZW(i, wristIdx, forearmIdx, 0, 0);
+    geo.attributes.skinWeight.setXYZW(i, 1-sm, sm, 0, 0);
     if(v.z <= Z0) continue;
-    let z, t;
-    if(v.z < Z1){ t = (v.z-Z0)/(Z1-Z0); z = Z0 + t*LEN; }
-    else { t = 1; z = Z0 + LEN + (v.z-Z1)*2.5; }
     const grow = 1 + 0.22*Math.pow(t,0.8);              // 肘に向かって少し太く
     v.set(v.x*grow, (v.y+2e-3)*grow-2e-3, z);
     v.applyQuaternion(q).add(wp);
     P.setXYZ(i, v.x, v.y, v.z);
   }
   P.needsUpdate = true;
+  geo.attributes.skinIndex.needsUpdate = true; geo.attributes.skinWeight.needsUpdate = true;
 }
 
 // ポーズ（関節の位置と向き）をモデルに反映

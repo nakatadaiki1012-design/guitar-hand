@@ -14,13 +14,15 @@ const COUPLE = {1:0.75, 2:0.75, 3:0.75, 4:0.6};
 // 計算では、指先の丸みの中心（tip関節から8.5mm先）を「指の腹の点」として、それを弦の上に置く
 const PAD_EXT = 8.5, PAD_R = 4.8;
 
-/* 手の向き：手首はネックの下（床側）かつ体の側。
-   指の付け根はネックの床側の縁の外にあり、指はそこから立ち上がって手のひら側へ丸まる */
-// 手の置き方（調整用にまとめておく）
+/* 手の向き：手のひらはネックの裏側にあり、親指はネックの裏の4弦(G)側に添える。
+   指の付け根は1弦(A)側の縁の外にあり、指はそこからネックを回り込んで、斜めに弦を押さえる。
+   前腕は体の側（ネックの裏・床側・ボディ側）から来て、手首で少し曲がる */
 export const HAND_CFG = {
-  F: [-0.10,-0.93,0.35],  N: [0,-0.35,-0.93],      // ふつうのコード：手の甲は客席側、手首はネックの真下
-  Fb:[-0.10,-0.85,0.50],  Nb:[0,-0.50,-0.85],      // セーハ：少し手前に倒す
-  yK: 40, zK: -4, yKb: 48, zKb: -6,                // 人差し指の付け根の位置
+  F: [-0.30, 0.10, 1.0],  N: [0.10,-1, 0.25],     // ふつうのコード（F：手首→指の付け根 / N：手のひらの向き）
+  Fb:[-0.25, 0.20, 1.0],  Nb:[0.10,-1, 0.10],     // セーハ
+  yK: 36, zK: -12, yKb: 40, zKb: -10,             // 人差し指の付け根の位置
+  arm: [0.45, 0.50, -0.74],                       // 手首→肘の向き
+  tipTilt: 28,                                    // 指先は真上から何度くらい傾けて当てるか
 };
 function handFrame(barre){
   const C = HAND_CFG;
@@ -63,8 +65,8 @@ function solveFinger(f, Lbone, K, T, H, kind){
     let pen = 0;
     const dd = norm(sub(pts[3],pts[2]));
     if(kind==='press'){
-      const ang = Math.acos(Math.min(1,Math.max(-1,-dd[2])))/DEG;      // 指先はなるべく真上から
-      pen += Math.max(0, ang-20)*0.15;
+      const ang = Math.acos(Math.min(1,Math.max(-1,-dd[2])))/DEG;      // 指先は少し斜めに立てて当てる
+      pen += Math.max(0, Math.abs(ang-HAND_CFG.tipTilt)-10)*0.15;
       if(dd[1] > 0.35) pen += (dd[1]-0.35)*20;                          // 手の方へ折り返すのは不自然
     }
     const p1 = norm(sub(pts[1],pts[0]));
@@ -161,8 +163,8 @@ export function computePose(chord, rig){
   const TL = rig.thumbLengths;
   const T0 = toWorld(H, W, rig.rest[THUMB_JOINTS[0]]);
   const thumbX = (K[1][0]+K[2][0])/2 + 2;
-  const Tpad = [thumbX, -2, NECK_BACK_Z - 5.5];             // 親指の腹（ネック裏に軽く当てる）
-  const dT = norm([-0.2,-0.9,0.3]);
+  const Tpad = [thumbX, -7, NECK_BACK_Z - 5.0];             // 親指の腹（ネック裏の4弦側に軽く当てる）
+  const dT = norm([-0.25,-0.95,0.15]);
   const T2 = sub(Tpad, mul(dT, TL[2]+7));
   const Tc = add(T2, mul(dT, TL[2]));
   // 親指の付け根の関節は、モデルの基本姿勢に近い側へ曲げる（手のひらの皮膚がよじれないように）
@@ -174,6 +176,7 @@ export function computePose(chord, rig){
   const joints = [];
   const J = (name, pos, fwd, dorsal, f=0, i=0) => joints.push({name, pos, fwd:norm(fwd), dorsal:norm(dorsal), f, i});
   J('wrist', W, H.F, H.U);
+  { const A = norm(HAND_CFG.arm); const fw = mul(A,-1); J('forearm', W, fw, sub(H.U, mul(fw, dot(H.U,fw)))); }
   for(let f=1; f<=4; f++){
     { const Bm = rig.restBasis[jointName(f,0)]; J(jointName(f,0), M[f], sub(K[f],M[f]), add(add(mul(H.X,Bm[1][0]), mul(H.Y,Bm[1][1])), mul(H.Z,Bm[1][2])), f, 0); }
     const {pts, axis} = fingers[f];
