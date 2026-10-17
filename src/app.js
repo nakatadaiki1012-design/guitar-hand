@@ -22,12 +22,11 @@ let TWEEN_MS = 450, tweenDur = 450;
 /* =========================================================
    縦のコード表
    ========================================================= */
-function renderDiagram(chord){
-  const el = document.getElementById('diagram');
+function diagramSVG(chord){
   const L=28, T=40, W=94, H=150, cols=4, rows=5;
   const sx = i => L + i*W/(cols-1), sy = j => T + j*H/rows;
   let s = `<rect width="150" height="210" rx="10" fill="#faf8f3"/>`;
-  s += `<text x="75" y="22" text-anchor="middle" font-size="16" font-weight="800" fill="#1b1410">${chord.name}</text>`;
+  s += `<text x="75" y="26" text-anchor="middle" font-size="24" font-weight="800" fill="#1b1410">${chord.name}</text>`;
   for(let j=0;j<=rows;j++) s += `<line x1="${L}" x2="${L+W}" y1="${sy(j)}" y2="${sy(j)}" stroke="#555" stroke-width="${j?1.4:5}"/>`;
   for(let i=0;i<cols;i++){
     s += `<line x1="${sx(i)}" x2="${sx(i)}" y1="${T}" y2="${T+H}" stroke="#333" stroke-width="1.6"/>`;
@@ -49,7 +48,19 @@ function renderDiagram(chord){
     s += `<circle cx="${sx(i)}" cy="${y}" r="9.5" fill="${FINGER_COLORS[f]}" stroke="#1b1410" stroke-width="1.2"/>`;
     s += `<text x="${sx(i)}" y="${y+4.5}" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1410">${f}</text>`;
   });
-  el.innerHTML = s;
+  return `<svg viewBox="0 0 150 210" aria-label="${chord.name}のコード表">${s}</svg>`;
+}
+/* 3D画面の左下：いまのコード（演奏中は「いま → 次 → その次」） */
+const chordCard = document.getElementById('chordCard'), svgCache = {};
+let stripKey = '';
+function showStrip(names, soon=false){
+  const key = names.join(',') + (soon ? '!' : '');
+  if(key === stripKey) return; stripKey = key;
+  chordCard.innerHTML = names.map((n,i)=>{
+    svgCache[n] ||= diagramSVG(getChord(n));
+    const cls = 'cc' + (i===0 ? ' now' : '') + (i===1 && soon ? ' soon' : '');
+    return (i ? '<b class="arr">→</b>' : '') + `<div class="${cls}">${svgCache[n]}</div>`;
+  }).join('');
 }
 
 /* =========================================================
@@ -132,7 +143,7 @@ function setChord(name, animate=true){
   document.getElementById('chordName').textContent = name;
   const R = ROOTS.find(r=>r.id===root), T = TYPES.find(t=>t.id===type);
   document.getElementById('chordReading').textContent = `${R.read}・${T.read}`;
-  renderDiagram(chord);
+  if(!playing()) showStrip([name]);
   updateButtons();
   if(!view) return;
   const now = performance.now();
@@ -285,8 +296,47 @@ function retime(o, bpm){                                    // テンポ・速�
 /* ---------- 進行練習 ---------- */
 const prog = {idx:0, running:false, list:PROGRESSIONS[0].chords, pos:0, timer:null, t0:0, e8:0.5, nextSlot:0, pat:2, hl:null};
 const progSel = document.getElementById('progSel'), progChords = document.getElementById('progChords');
-progSel.innerHTML = PROGRESSIONS.map((p,i)=>`<option value="${i}">${p.name}（${p.chords.join('→')}）</option>`).join('');
-progSel.onchange = ()=>{ const i = +progSel.value; prog.idx=i; prog.list=PROGRESSIONS[i].chords; prog.pos=0; stopProg(); renderProg(); setChord(prog.list[0]); };
+progSel.innerHTML = PROGRESSIONS.map((p,i)=>`<option value="${i}">${p.name}（${p.chords.join('→')}）</option>`).join('')
+  + `<option value="custom">✏️ 自分で作る</option>`;
+/* 自分で作る進行：コード名をスペース（または → , ・）で区切って書く。1つ＝1小節。
+   Bb・A# → B♭、am → Am、M7 → maj7 のような書き方も受け付ける */
+const customRow = document.getElementById('customRow'), customIn = document.getElementById('customProg'), customMsg = document.getElementById('customMsg');
+let customList = ['C','Am','F','G7'];
+try{ const sv = JSON.parse(localStorage.getItem('ukeCustomProg') || 'null'); if(Array.isArray(sv) && sv.length) customList = sv; }catch(e){}
+customIn.value = customList.join(' ');
+function normChord(t){
+  const m = t.match(/^([a-gA-G])([#♯b♭]?)(.*)$/); if(!m) return null;
+  let root = m[1].toUpperCase(), acc = m[2], rest = m[3];
+  if(acc === 'b' || acc === '♭') root += '♭';
+  else if(acc === '#' || acc === '♯') root = ({C:'D♭', D:'E♭', F:'G♭', G:'A♭', A:'B♭'})[root] || root+'♯';
+  rest = rest.replace(/^M7$|^Maj7$|^MAJ7$/, 'maj7').replace(/^min$/, 'm').replace(/^M$/, '');
+  const name = root + rest;
+  return getChord(name) ? name : null;
+}
+function readCustom(){
+  const toks = customIn.value.split(/[\s,、→\-・|]+/).filter(Boolean);
+  const ok = [], bad = [];
+  for(const t of toks){ const n = normChord(t); n ? ok.push(n) : bad.push(t); }
+  customIn.classList.toggle('bad', bad.length > 0);
+  customMsg.classList.toggle('bad', bad.length > 0);
+  customMsg.textContent = bad.length ? `使えないコード：${bad.join('、')}（ほかの${ok.length}個で練習します）`
+                                     : ok.length ? `${ok.length}小節をくり返します` : 'コードを書いてください';
+  if(!ok.length) return;
+  customList = ok;
+  try{ localStorage.setItem('ukeCustomProg', JSON.stringify(ok)); }catch(e){}
+  if(progSel.value === 'custom'){
+    prog.list = customList; prog.pos %= ok.length; renderProg();
+    if(!prog.running) setChord(prog.list[prog.pos]);
+  }
+}
+customIn.oninput = readCustom;
+progSel.onchange = ()=>{
+  const custom = progSel.value === 'custom';
+  customRow.hidden = !custom;
+  prog.list = custom ? customList : PROGRESSIONS[+progSel.value].chords;
+  prog.idx = progSel.value; prog.pos = 0; stopProg(); renderProg(); setChord(prog.list[0]);
+  if(custom){ readCustom(); customIn.focus(); }
+};
 const patSel = document.getElementById('patSel');
 patSel.innerHTML = PATTERNS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
 patSel.value = 2;
@@ -473,7 +523,7 @@ function startSong(){
 function stopSong(){
   song.running = false; clearInterval(song.timer);
   document.getElementById('btnSong').textContent = '▶ 演奏する';
-  highlightSong(-1); kick();
+  highlightSong(-1); showStrip([chordName()]); kick();
 }
 document.getElementById('btnSong').onclick = ()=> song.running ? stopSong() : startSong();
 renderSong();
@@ -508,6 +558,20 @@ function musicPose(pl, ph){
   return pose;
 }
 
+// 次と、その次に弾くコード（コードが変わる所を先までさがす）。次まで1拍を切ったら光らせる
+function upcoming(pl, ph){
+  const k = Math.max(0, Math.floor(ph)), names = [pl.chordAt(k)];
+  let j = k, soon = false;
+  while(names.length < 3){
+    const last = names[names.length-1];
+    let n = j + 1;
+    while(n < pl.end && n < j + 8*pl.spb && pl.chordAt(n) === last) n++;
+    if(n >= pl.end || pl.chordAt(n) === last) break;
+    if(names.length === 1) soon = n - ph <= 2;
+    names.push(pl.chordAt(n)); j = n;
+  }
+  showStrip(names, soon);
+}
 // 右手の今の状態（振りの角度・浮かせる量）
 const REST = {theta: -STRUM_AMP, lift: 7, wrist: 4, roll: 0, flick: -4};
 function rightState(now, pl, ph){
@@ -567,6 +631,7 @@ function loop(now){
     let pose;
     if(pl){
       pose = musicPose(pl, phL);
+      upcoming(pl, phL);
       if(pl.o === prog) highlightProg(ph < 0 ? -1 : (prog.pos + Math.floor(ph/8)) % prog.list.length, ph < 0 ? -1 : Math.floor(ph) % 8);
       else highlightSong(ph < 0 || ph >= pl.end ? -1 : Math.floor(ph/pl.spb));
     } else pose = currentPose(now);

@@ -65,10 +65,14 @@
   .gear{position:absolute;top:6px;right:6px;width:32px;height:32px;padding:0;border-radius:50%;font-size:17px;line-height:1;
     background:rgba(255,255,255,.75);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.9);box-shadow:0 2px 8px rgba(0,0,0,.12)}
   .gear.on{background:var(--on);color:#fff}
-  .chordCard{position:absolute;left:6px;bottom:6px;width:88px;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.18);pointer-events:none;opacity:.94}
+  .chordCard{position:absolute;left:6px;bottom:6px;display:flex;align-items:center;gap:3px;pointer-events:none}
   .chordCard.off{display:none}
-  #mainWrap.split .chordCard{width:76px}
-  @media (max-width:640px){.chordCard{width:64px} .hint{display:none}}
+  .chordCard .cc{width:54px;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.18);opacity:.95;transition:box-shadow .15s}
+  .chordCard .cc.now{width:62px;box-shadow:0 0 0 2px var(--accent),0 2px 8px rgba(0,0,0,.18)}
+  .chordCard .cc.soon{box-shadow:0 0 0 3px var(--accent2),0 2px 10px rgba(0,0,0,.25)}
+  .chordCard .arr{color:#fff;font-size:13px;text-shadow:0 0 4px #0008}
+  #mainWrap.split .chordCard .cc{width:46px} #mainWrap.split .chordCard .cc.now{width:52px}
+  @media (max-width:640px){.chordCard .cc{width:40px} .chordCard .cc.now{width:46px} .hint{display:none}}
   .settings{position:absolute;z-index:20;top:62px;right:16px;width:min(330px,calc(100% - 32px));max-height:min(78vh,560px);overflow:auto;
     background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 40px rgba(20,40,50,.22);padding:10px 12px 12px}
   .set-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
@@ -138,6 +142,12 @@
   .field{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
   .field>span{font-size:12px;color:var(--sub);min-width:40px}
   .field select{flex:1;min-width:0}
+  .field.custom{margin-top:-2px}
+  .field.custom input{flex:1;min-width:0;font:inherit;font-size:15px;padding:6px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--text)}
+  .field.custom input:focus{outline:2px solid #0e9f9a55;border-color:var(--accent)}
+  .field.custom input.bad{border-color:var(--accent2)}
+  .field.custom small{flex-basis:100%;padding-left:46px;font-size:11px;color:var(--dim)}
+  .field.custom small.bad{color:var(--accent2)}
   .prog-chords{display:flex;gap:6px;flex-wrap:wrap}
   .pc{min-width:52px;text-align:center;padding:7px 6px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-size:17px;font-weight:800;cursor:pointer}
   .pc.now{background:var(--on);color:#fff;border-color:var(--on)}
@@ -185,7 +195,7 @@
       <button class="vsel" id="angleBtn" title="押すたびに見る向きが変わります">🎥 ななめ</button>
       <button class="vsel vsel2" id="angle2Btn" title="右の画面の向き" hidden>🎥 正面</button>
       <button class="gear" id="gearBtn" title="設定（背景・ウクレレの柄・表示）" aria-label="設定">⚙</button>
-      <div class="chordCard" id="chordCard"><svg id="diagram" viewBox="0 0 150 210" aria-label="コード表"></svg></div>
+      <div class="chordCard" id="chordCard"></div>
     </div>
     <!-- 設定（小さな歯車ボタンから開く） -->
     <div class="settings" id="settings" hidden>
@@ -218,6 +228,8 @@
 
       <div class="tab on" id="tab-practice">
         <div class="field"><span>進行</span><select id="progSel"></select></div>
+        <div class="field custom" id="customRow" hidden><span></span><input id="customProg" type="text" autocomplete="off" spellcheck="false"
+          placeholder="例：C Am F G7（1つ＝1小節）"><small id="customMsg"></small></div>
         <div class="prog-chords" id="progChords"></div>
         <div class="field" style="margin-top:10px"><span>右手</span><select id="patSel"></select></div>
         <div class="pattern" id="patView"></div>
