@@ -5,9 +5,16 @@ import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROO
 import { computePose, blendPose, HAND_CFG } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
+import { BACKDROPS } from './backdrop.js';
+import { FINISHES } from './uke.js';
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 
-const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false, focus:0, vib:[0,0,0,0]};
+const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false, vib:[0,0,0,0],
+               bg:'day', finish:'mahogany', chart:true};
+// 設定は次に開いた時も同じになるように覚えておく（覚えられない端末ではそのまま）
+const SAVED = ['mirror','badges','ghost','rightMode','split','bg','finish','chart'];
+try{ const sv = JSON.parse(localStorage.getItem('ukeSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
+const saveSettings = () => { try{ localStorage.setItem('ukeSettings', JSON.stringify(Object.fromEntries(SAVED.map(k=>[k, state[k]])))); }catch(e){} };
 let view = null, rig = null;
 let poseFrom = null, poseTo = null, tweenStart = 0;
 let TWEEN_MS = 450, tweenDur = 450;
@@ -43,42 +50,6 @@ function renderDiagram(chord){
     s += `<text x="${sx(i)}" y="${y+4.5}" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1410">${f}</text>`;
   });
   el.innerHTML = s;
-}
-
-/* =========================================================
-   押さえ方の説明文
-   ========================================================= */
-function renderSteps(chord){
-  // 輪切り図で見る指を選ぶボタン（押さえる指だけ）
-  const el = document.getElementById('steps');
-  const list = [...new Set(chord.fingers.filter(Boolean))].sort();
-  el.innerHTML = list.map(f=>`<button data-f="${f}" style="background:${FINGER_COLORS[f]}">${f} ${FINGER_NAMES[f]}</button>`).join('');
-  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{ state.focus = +b.dataset.f; markFocus(); kick(); });
-  state.focus = list.length ? list[0] : 0;
-  markFocus();
-
-  // コツ
-  const tips = [];
-  if(!list.length) tips.push('<strong>どこも押さえない</strong>コードです。左手は軽くネックに添えるだけでOK。');
-  if(chord.barre) tips.push('<strong>セーハ：</strong>人差し指をまっすぐ伸ばし、指の腹より少し親指側（骨の硬いところ）で押さえると音が出やすいです。親指はネックの裏でしっかり支えます。');
-  if(list.length && !chord.barre) tips.push('<strong>指を立てる：</strong>第一関節を曲げて、指先で真上から押さえると、となりの弦に触れずにきれいに鳴ります。');
-  if(list.length) tips.push('<strong>フレットのすぐ近く：</strong>金属の棒（フレット）のすぐ左側を押さえると、弱い力でもビビりません。');
-  const fingersUsed = new Set(chord.fingers.filter(Boolean)).size;
-  if(fingersUsed>=3) tips.push('<strong>置く順番：</strong>遠い弦（4弦側）を押さえる指から先に置くと、手の形が作りやすいです。');
-  tips.push('<strong>確認：</strong>1本ずつ弾いて、こもった音の弦がないかチェックしましょう。');
-  document.getElementById('tips').innerHTML = tips.join('<br>');
-
-  // むずかしさ
-  let lv = 1;
-  if(fingersUsed>=2) lv=2;
-  if(fingersUsed>=3) lv=3;
-  if(chord.barre) lv = Math.max(lv,4);
-  if(chord.barre && fingersUsed>=3) lv=5;
-  document.getElementById('difficulty').textContent = 'むずかしさ ' + '★'.repeat(lv) + '☆'.repeat(5-lv);
-}
-
-function markFocus(){
-  document.querySelectorAll('#steps button').forEach(b=>b.classList.toggle('focus', +b.dataset.f===state.focus));
 }
 
 /* =========================================================
@@ -161,7 +132,6 @@ function setChord(name, animate=true){
   document.getElementById('chordName').textContent = name;
   const R = ROOTS.find(r=>r.id===root), T = TYPES.find(t=>t.id===type);
   document.getElementById('chordReading').textContent = `${R.read}・${T.read}`;
-  renderSteps(chord);
   renderDiagram(chord);
   updateButtons();
   if(!view) return;
@@ -211,15 +181,6 @@ function updateButtons(){
   });
 }
 
-function toggleBtn(id, key){
-  const b = document.getElementById(id);
-  b.onclick = ()=>{ state[key] = !state[key]; b.classList.toggle('on', state[key]); kick(); };
-}
-toggleBtn('btnBadges','badges');
-toggleBtn('btnGhost','ghost');
-// 右手の表示：いつも／演奏中だけ／なし
-// 速さ（スロー再生）：テンポに掛け算する。演奏中に変えても途切れないようにつなぐ
-toggleBtn('btnMirror','mirror');
 // ボタンの切り替え（ひとつだけ選べるグループ）
 function segment(id, fn){
   const el = document.getElementById(id);
@@ -240,24 +201,39 @@ document.getElementById('angle2Btn').onclick = e=>{
   angle2 = nextAngle(angle2); e.currentTarget.textContent = '🎥 ' + VIEWS[angle2].label;
   if(view) view.setView2(angle2); kick();
 };
-// 右手：押すたびに 表示 → 演奏中だけ → 表示しない
-const RMODES = [['always','表示'],['playing','演奏中だけ'],['off','なし']];
-document.getElementById('rightBtn').onclick = e=>{
-  const i = (RMODES.findIndex(m=>m[0]===state.rightMode)+1) % RMODES.length;
-  state.rightMode = RMODES[i][0];
-  e.currentTarget.textContent = '✋ 右手：' + RMODES[i][1];
-  e.currentTarget.classList.toggle('on', state.rightMode !== 'off');
-  kick();
-};
-document.getElementById('btnSplit').onclick = e=>{
-  state.split = !state.split;
-  e.currentTarget.classList.toggle('on', state.split);
+/* ---------- 設定（歯車ボタン） ---------- */
+const RMODES = [['always','いつも表示'],['playing','演奏中だけ'],['off','表示しない']];
+const settingsEl = document.getElementById('settings'), gearBtn = document.getElementById('gearBtn');
+function openSettings(on){ settingsEl.hidden = !on; gearBtn.classList.toggle('on', on); }
+gearBtn.onclick = e=>{ e.stopPropagation(); openSettings(settingsEl.hidden); };
+document.getElementById('setClose').onclick = ()=>openSettings(false);
+document.addEventListener('pointerdown', e=>{ if(!settingsEl.hidden && !settingsEl.contains(e.target) && e.target !== gearBtn) openSettings(false); });
+// ひとつだけ選ぶボタンの列
+function choiceRow(id, items, key, apply){
+  const el = document.getElementById(id);
+  el.innerHTML = items.map(([v, label, sw])=>`<button data-v="${v}">${sw ? `<i class="sw" style="background:${sw}"></i>` : ''}${label}</button>`).join('');
+  const mark = () => el.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.v === state[key]));
+  el.querySelectorAll('button').forEach(b=>b.onclick = ()=>{ state[key] = b.dataset.v; mark(); apply(); saveSettings(); kick(); });
+  mark();
+}
+const BG_SW = {day:'#7fd3cc', sunset:'#f0805a', night:'#1f2d55', house:'#b0805a', meadow:'#6fa045'};
+choiceRow('optBg', Object.entries(BACKDROPS).map(([k,b])=>[k, b.label, BG_SW[k]]), 'bg', ()=>view && view.setBackdrop(state.bg));
+choiceRow('optFinish', Object.entries(FINISHES).map(([k,f])=>[k, f.label, f.paint || f.top.light]), 'finish', ()=>view && view.setFinish(state.finish));
+choiceRow('optRight', RMODES, 'rightMode', ()=>{});
+// オン・オフのボタン
+const TOGGLES = [['split','▥ 2画面'],['ghost','半透明'],['badges','指番号'],['mirror','左右反転'],['chart','コード表']];
+const showEl = document.getElementById('optShow');
+showEl.innerHTML = TOGGLES.map(([k,l])=>`<button data-k="${k}">${l}</button>`).join('');
+function applyToggles(){
+  showEl.querySelectorAll('button').forEach(b=>b.classList.toggle('on', !!state[b.dataset.k]));
   document.getElementById('angle2Btn').hidden = !state.split;
   document.getElementById('handView').classList.toggle('split', state.split);
   document.getElementById('mainWrap').classList.toggle('split', state.split);
+  document.getElementById('chordCard').classList.toggle('off', !state.chart);
   if(view) view.setSplit(state.split);
-  kick();
-};
+}
+showEl.querySelectorAll('button').forEach(b=>b.onclick = ()=>{ state[b.dataset.k] = !state[b.dataset.k]; applyToggles(); saveSettings(); kick(); });
+applyToggles();
 // 速さ（練習・曲デモ）：押すたびに ×1 → ×¾ → ×½ → ×¼
 const SPEEDS = [[1,'×1'],[0.75,'×¾'],[0.5,'×½'],[0.25,'×¼']];
 document.querySelectorAll('.speedBtn').forEach(b=>b.onclick = ()=>{
@@ -270,7 +246,7 @@ document.querySelectorAll('.swingBtn').forEach(b=>b.onclick = ()=>{
   state.swing = !state.swing;
   document.querySelectorAll('.swingBtn').forEach(x=>x.classList.toggle('on', state.swing));
 });
-// タブ（押さえ方／練習／曲デモ）
+// タブ（練習／曲デモ）
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick = ()=>{
   document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on', x===b));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.id === 'tab-'+b.dataset.tab));
@@ -555,7 +531,6 @@ let dirty = true, raf = 0;
 function kick(){ dirty = true; if(!raf) raf = requestAnimationFrame(loop); }
 // 動きをなめらかにする工夫
 //  ・右手の動きは少しだけ「ならす」（急に止まったり跳んだりしない）
-//  ・輪切り図は、手が止まった時だけ描き直す
 //  ・重い端末では、動いている間だけ自動で解像度を下げる
 let rSmooth = null, lastFrame = 0, frameAvg = 16, quality = 1, wasMoving = false, slowCount = 0, lowPower = false;
 function smoothRight(target, now){
@@ -595,10 +570,8 @@ function loop(now){
       if(pl.o === prog) highlightProg(ph < 0 ? -1 : (prog.pos + Math.floor(ph/8)) % prog.list.length, ph < 0 ? -1 : Math.floor(ph) % 8);
       else highlightSong(ph < 0 || ph >= pl.end ? -1 : Math.floor(ph/pl.spb));
     } else pose = currentPose(now);
-    const settle = handMoving && !poseFrom;                // 左手の動きがちょうど終わった
     const right = window.__forceRight || smoothRight(showRight ? rightState(now, pl, phR) : null, now);
-    view.render(pose, {...state, right, quality: moving ? quality : 1,
-      skipSide: pl ? true : handMoving ? !settle : !dirty});
+    view.render(pose, {...state, right, quality: moving ? quality : 1});
     dirty = false;
   }
   wasMoving = moving;
@@ -617,14 +590,13 @@ renderProg();
 setChord('C', false);
 createView({
   mainCanvas: document.getElementById('handView'),
-  sideCanvas: document.getElementById('sideView'),
   mainOverlay: document.getElementById('mainOverlay'),
-  sideOverlay: document.getElementById('sideOverlay'),
   onTap: ()=>strum(getChord(chordName()))
 }).then(v=>{
   view = v; window.__view = v;
   view.onChange(kick);
   document.getElementById('loading')?.remove();
+  view.setBackdrop(state.bg); view.setFinish(state.finish); applyToggles();
   setChord(state.root+state.type, false);
   window.__ready = true;
   // 残りのコードの手の形も、ひまな時間に先に計算しておく（切り替えが引っかからないように）

@@ -3,7 +3,7 @@
    ・手の形：ピックを軽く持つような形。人差し指は軽く曲げるだけ（伸ばし気味）で、爪の背中側で弦をこする。中指〜小指はその後ろに軽く握り込む。
              親指の腹は人差し指の第一関節の横にそっと当てる
    ・腕の向き：前腕はウクレレの尾側（ボディのおしり側）から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横で約90°）
-   ・動き　：腕は止めたまま、手首を支点に手を回して弾く（手首の横振り＋前腕のひねり＋手首のしなり）
+   ・動き　：腕は止めたまま、手の甲を軸にして指先側を回して弾く（手の甲はあまり動かない）
              ダウン（4弦→1弦）は人差し指の爪、アップ（1弦→4弦）は指の腹で弦をこする
    ・弾かない拍（空ピッキング）でも手は止めず、弦から少し浮かせて振り続ける
    ========================================================= */
@@ -20,9 +20,9 @@ const CFG = {
   curl:  {1:[26,56,48], 2:[66,95,55], 3:[72,98,55], 4:[76,98,55]},  // 指の曲げ（付け根・第二・第一関節）
   splay: {1:6, 2:0, 3:-7, 4:-15},            // 指を軽く寄せる（度）
   pivotUp: 120,                              // 腕で振る時の中心：弦から客席側へ何mmか
-  mix: [0.50, 0.38, 0.12],                   // 回す軸の配分：手首の横振り・前腕のひねり・ネック方向
   rollBias: -12,                             // 構えの時から、前腕を小指側へ少しひねっておく（度）
-  armFollow: 0,                              // 弦の上の動きのうち、腕ごと動く割合（0：腕は止めて、手首を支点に回して弾く）
+  armFollow: 0,                              // 弦の上の動きのうち、腕ごと動く割合（0：腕は止めて、手の甲を軸に回して弾く）
+  backDepth: 14,                             // 回す軸：手の甲の表面（骨から甲側へ何mmか）
   elbow: [0.84, -0.30, -0.45],               // 手首→ひじの向き：前腕はウクレレの尾側から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横）
 };
 
@@ -71,14 +71,17 @@ function localHand(rig, flick=0){
   // 弦に当たるのは、丸めた人差し指の第一関節〜爪の背中側
   const iDj = J.find(j=>j.name===jointName(1,3)), iTj = J.find(j=>j.name===jointName(1,4));
   const hit = add(mul(add(iDj.pos, iTj.pos), 0.5), mul(norm(iDj.dorsal), 7));
-  const res = {J, hit};
+  // 手の甲のまん中（中指の骨のまん中あたりの、甲の表面）… ここを軸にして指先側を回す
+  const m0 = rig.rest[jointName(2,0)], m1 = rig.rest[jointName(2,1)];
+  const back = add(mul(add(m0, m1), 0.5), mul(palm, -CFG.backDepth));
+  const res = {J, hit, back};
   rig._strumCache.set(flick, res);
   return res;
 }
 
 /* st = {theta: 振りの角度（＋がダウン方向）, lift: 弦から浮かせる量 mm} */
 export function rightHandPose(rig, st){
-  const {J, hit} = localHand(rig, st.flick || 0);
+  const {J, hit, back} = localHand(rig, st.flick || 0);
   // 手の向きは前腕の向きから決める：前腕の延長線から、手のひら側へ wristFlex 度だけ曲げる
   const fa0 = mul(norm(CFG.elbow), -1);                         // ひじ→手首
   const P0 = norm(sub(CFG.palm, mul(fa0, dot(CFG.palm, fa0))));  // 前腕に直交する「手のひら側」
@@ -93,22 +96,26 @@ export function rightHandPose(rig, st){
   const flexA = (st.wrist || 0)*DEG, rollA = ((st.roll || 0) + CFG.rollBias)*DEG;
   const bend = v => R3(F, rollA, R3(X, flexA, v));
   const toWb = v => bend(toW(v));
-  const W = sub(target, toWb(hit));
-  // 振り子のように回しつつ、指先は弦の面に沿って動くように高さを補正する
-  // （ひじを支点にした前腕の回転＋手首のスナップ。弦を越えたら少し浮く）
-  // 回す中心は手首の近く（腕ごと振るのではなく、手首のスナップと前腕の回転で弾く）。
-  // 中心が指先に近づくぶん、同じ幅を弦の上で動くように角度を大きくする
-  const pivot = W;
-  // 回す軸：前腕のひねり（前腕の向き）と手首の横振り（ネックの向き）の中間
-  // 回す軸：手首の横振り（手のひらに垂直な軸）＋前腕のひねり（前腕の向き）＋少しだけネックの向き
-  const ax = norm(add(add(mul(N, CFG.mix[0]), mul(fa0, -CFG.mix[1])), mul([1,0,0], CFG.mix[2])));
-  const hv = sub(target, pivot), rHit = vlen(sub(hv, mul(ax, dot(hv, ax))));
-  const reach = st.theta * (CFG.pivotUp - 4);                   // 弦の上で指先が動く幅（mm）
+  // 手の甲の位置は固定：しなり・ひねりを加えても甲はその場にあり、指先側だけが動く
+  const bend0 = v => R3(F, CFG.rollBias*DEG, v), toW0 = v => bend0(toW(v));
+  const B = add(sub(target, toW0(hit)), toW0(back));
+  const W = sub(B, toWb(back));
+  // 手の甲を軸に回して、指先が弦の上を動く（甲から指先までの距離に合わせて角度を決める）。
+  // 指先は弦の面に沿って動くように高さを補正する（弦を越えたら少し浮く）
+  const pivot = B;
+  // 回す軸：甲から指先へ向かう線と、弦をまたぐ向き（y）の両方に直交する軸。
+  // 甲からぶら下がった指先が、振り子のように弦をまたいで動く
+  const hv = sub(target, pivot);
+  const ax = norm(cross(hv, [0,1,0])), rHit = vlen(sub(hv, mul(ax, dot(hv, ax))));
+  const reach = st.theta * (CFG.pivotUp - 4) * 0.72;            // 弦の上で指先が動く幅（mm）。残りは前腕のひねりで
   const follow = reach * CFG.armFollow;                          // 腕ごと少しついてくる分
-  const th = (reach - follow) / rHit;                            // 残りは手首のスナップで
+  const th = (reach - follow) / rHit;
   const rotP = p => add(add(pivot, R3(ax, th, sub(p, pivot))), [0, follow, 0]);
   const hitR = rotP(add(W, toWb(hit)));
-  const off = [0, 0, (stringZ(STRUM_X) + 0.4 - hitR[2]) + st.lift + Math.max(0, Math.abs(hitR[1]) - 17)*0.35];
+  // 弦の上（4本の幅）では指先を弦の面に合わせ、外側では弧を描いて自然に弦から離れる
+  const onStr = 1 - Math.min(1, Math.max(0, (Math.abs(hitR[1]) - 12)/14));
+  const corr = (stringZ(STRUM_X) + 0.4 - hitR[2])*onStr;
+  const off = [0, 0, corr + Math.max(0, stringZ(STRUM_X) + 0.4 - hitR[2] - corr) + st.lift];   // 表板の方へは沈み込まない
   const place = p => add(rotP(p), off);
   const dir = v => R3(ax, th, v);
   const out = [];
@@ -165,8 +172,8 @@ export function strumState(phase, pattern){
   // 手首は腕より遅れてしなる（位相を少し遅らせる）
   const lag = 0.14;
   const wrist = -16 * (A/STRUM_AMP) * Math.sin(Math.PI*(phase - lag));
-  // 前腕のひねり：ダウンで手の甲が少し上を向くように
-  const roll = 22 * (A/STRUM_AMP) * Math.sin(Math.PI*(phase - lag*0.5));
+  // 前腕のひねり：甲を軸にした振りに合わせて、指先が同じ向きに動くようにひねる
+  const roll = -12 * (A/STRUM_AMP) * Math.sin(Math.PI*(phase - lag*0.5));
   // 指のしなり：動く向き（速度）に合わせて。弦を通る少し前から
   const v = Math.cos(Math.PI*(phase + 0.06));               // ＋で下向き（ダウン）に動いている
   const flick = v > 0 ? 12*v : 8*v;

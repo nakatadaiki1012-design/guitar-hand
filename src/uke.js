@@ -68,6 +68,22 @@ function placeSeg(mesh, a, b, r){
 
 export const TUNER_POS = [[-40,-18.5],[-82,-18.5],[-82,18.5],[-40,18.5]];  // G C E A
 
+/* ウクレレの柄（ボディの木・塗装）。設定ボタンから選ぶ */
+export const FINISHES = {
+  mahogany: {label:'マホガニー',
+    top: {base:'#6b3518', dark:'#3a1a0a', light:'#8a4a24', lines:160, wave:5, seed:3, figure:10},
+    side:{base:'#5e2e14', dark:'#331607', light:'#7a3e1d', lines:140, wave:3, seed:9}, rough:0.42},
+  koa: {label:'ハワイアンコア',                       // 金色がかった赤茶に、ゆらめく杢（もく）
+    top: {base:'#9c5520', dark:'#552608', light:'#d68d43', lines:200, wave:10, seed:21, figure:46},
+    side:{base:'#8a4a1c', dark:'#4a2208', light:'#c27a38', lines:170, wave:8, seed:23, figure:30}, rough:0.28},
+  spruce: {label:'スプルース',                        // 表板だけ明るい白木、横と裏はマホガニー
+    top: {base:'#e0c18a', dark:'#b89058', light:'#f5e0b4', lines:110, wave:1.5, seed:7, figure:3},
+    side:{base:'#5e2e14', dark:'#331607', light:'#7a3e1d', lines:140, wave:3, seed:9},
+    back:{base:'#6b3518', dark:'#3a1a0a', light:'#8a4a24', lines:160, wave:5, seed:3, figure:10}, rough:0.38},
+  black: {label:'ブラック', paint:'#161314', rough:0.16},
+  pastel: {label:'パステル', paint:'#8fd3cb', rough:0.3},
+};
+
 export function buildUkulele(){
   const g = new THREE.Group();
   const mahogany = new THREE.MeshStandardMaterial({map: woodTexture({base:'#6b3518', dark:'#3a1a0a', light:'#8a4a24', lines:160, wave:5, seed:3, figure:10}), roughness:0.42, metalness:0});
@@ -92,7 +108,8 @@ export function buildUkulele(){
   const uvScale = (geo, sx, sy) => { const uv = geo.attributes.uv; for(let i=0;i<uv.count;i++) uv.setXY(i, uv.getX(i)*sx, uv.getY(i)*sy); return geo; };
   const plate = 2.5;
   const topGeo = uvScale(new THREE.ExtrudeGeometry(shapeOf(outline,[holePts]), {depth:plate, bevelEnabled:true, bevelThickness:0.6, bevelSize:0.6, bevelSegments:2, curveSegments:24}), 1/300, 1/60);
-  add(topGeo, mahogany, m=>{ m.position.z = -5 - plate - 0.6; });
+  const topMat = mahogany.clone();
+  add(topGeo, topMat, m=>{ m.position.z = -5 - plate - 0.6; });
   const backGeo = uvScale(new THREE.ExtrudeGeometry(shapeOf(outline), {depth:plate, bevelEnabled:true, bevelThickness:0.6, bevelSize:0.6, bevelSegments:2}), 1/300, 1/60);
   add(backGeo, mahogany, m=>{ m.position.z = -5 - BODY_DEPTH + 0.6; });
   const inner = insetPath(outline, 2.5);
@@ -209,9 +226,19 @@ export function buildUkulele(){
     }
   }
   setStrings(null);
-  // 輪切り図で切れるように、全部の材質を集めておく
-  const all = new Set(); g.traverse(o=>{ if(o.material) all.add(o.material); });
-  return {group: g, setStrings, clipMats: [...all]};
+  // 柄を変える（木目の絵は1回作ったら使い回す）
+  const texCache = new Map();
+  const wood = o => { const k = JSON.stringify(o); if(!texCache.has(k)) texCache.set(k, woodTexture(o)); return texCache.get(k); };
+  function setFinish(name){
+    const f = FINISHES[name] || FINISHES.mahogany;
+    const set = (m, o) => {
+      if(f.paint){ m.map = null; m.color.set(f.paint); }
+      else { m.map = wood(o); m.color.set('#ffffff'); }
+      m.roughness = f.rough; m.needsUpdate = true;
+    };
+    set(topMat, f.top); set(mahogany, f.back || f.top); set(mahoganySide, f.side);
+  }
+  return {group: g, setStrings, setFinish};
 }
 
 /* 輪切り図の断面（ネック＋指板） */

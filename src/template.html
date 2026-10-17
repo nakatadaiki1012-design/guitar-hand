@@ -41,7 +41,7 @@
   .app>*{min-width:0}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:var(--shadow)}
   .stage{position:sticky;top:8px}
-  @media (max-width:900px){.stage{position:static}}
+  @media (max-width:900px){.stage{position:relative;top:0}}
   .stage-head{display:flex;align-items:center;gap:10px;padding:0 4px 8px;flex-wrap:wrap}
   #chordName{font-size:34px;font-weight:800;line-height:1}
   #chordReading{color:var(--sub);font-size:13px}
@@ -62,6 +62,22 @@
   #mainWrap.split .hint{display:none}
   .hint{position:absolute;right:8px;bottom:6px;font-size:10px;color:#fff;text-shadow:0 0 4px #0006;pointer-events:none}
   .sidetag{position:absolute;right:6px;top:6px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800;color:#1b1410}
+  .gear{position:absolute;top:6px;right:6px;width:32px;height:32px;padding:0;border-radius:50%;font-size:17px;line-height:1;
+    background:rgba(255,255,255,.75);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.9);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+  .gear.on{background:var(--on);color:#fff}
+  .chordCard{position:absolute;left:6px;bottom:6px;width:88px;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.18);pointer-events:none;opacity:.94}
+  .chordCard.off{display:none}
+  #mainWrap.split .chordCard{width:76px}
+  @media (max-width:640px){.chordCard{width:64px} .hint{display:none}}
+  .settings{position:absolute;z-index:20;top:62px;right:16px;width:min(330px,calc(100% - 32px));max-height:min(78vh,560px);overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 40px rgba(20,40,50,.22);padding:10px 12px 12px}
+  .set-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .set-head .chip{padding:2px 9px}
+  .set-group{padding:7px 0;border-top:1px solid var(--line)}
+  .set-group>span{display:block;font-size:11px;color:var(--sub);margin-bottom:5px;font-weight:700}
+  .opts{display:flex;flex-wrap:wrap;gap:5px}
+  .opts button{padding:5px 9px;font-size:13px}
+  .opts .sw{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid #0002}
   .toolbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
   .toolbar label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--sub)}
   .toolbar .sp{flex:1}
@@ -168,14 +184,16 @@
     <div class="svgwrap" id="mainWrap"><canvas id="handView" aria-label="手の形（3D）"></canvas><div class="overlay" id="mainOverlay"></div><div class="hint">回転：ドラッグ ／ 移動：2本指・右ドラッグ ／ 拡大：ピンチ・ホイール</div><div id="loading" class="loading">3Dの手を準備中…</div>
       <button class="vsel" id="angleBtn" title="押すたびに見る向きが変わります">🎥 ななめ</button>
       <button class="vsel vsel2" id="angle2Btn" title="右の画面の向き" hidden>🎥 正面</button>
+      <button class="gear" id="gearBtn" title="設定（背景・ウクレレの柄・表示）" aria-label="設定">⚙</button>
+      <div class="chordCard" id="chordCard"><svg id="diagram" viewBox="0 0 150 210" aria-label="コード表"></svg></div>
     </div>
-    <div class="toolbar">
-      <button id="rightBtn" class="chip on" title="押すたびに：表示 → 演奏中だけ → 表示しない">✋ 右手：表示</button>
-      <button id="btnSplit" class="chip" title="2つの向きを並べて同時に表示">▥ 2画面</button>
-      <span class="sp"></span>
-      <button id="btnGhost" class="chip on" title="手を半透明にして押さえる場所を見せる">半透明</button>
-      <button id="btnBadges" class="chip on" title="指番号を表示">指番号</button>
-      <button id="btnMirror" class="chip" title="左右反転">反転</button>
+    <!-- 設定（小さな歯車ボタンから開く） -->
+    <div class="settings" id="settings" hidden>
+      <div class="set-head"><b>設定</b><button id="setClose" class="chip" aria-label="閉じる">✕</button></div>
+      <div class="set-group"><span>背景</span><div class="opts" id="optBg"></div></div>
+      <div class="set-group"><span>ウクレレ</span><div class="opts" id="optFinish"></div></div>
+      <div class="set-group"><span>右手</span><div class="opts" id="optRight"></div></div>
+      <div class="set-group"><span>表示</span><div class="opts" id="optShow"></div></div>
     </div>
     <div class="legend">
       <span><i style="background:var(--f1)"></i>1 人差し指</span>
@@ -194,24 +212,11 @@
 
     <section class="card">
       <nav class="tabs">
-        <button data-tab="how" class="on">押さえ方</button>
-        <button data-tab="practice">練習</button>
+        <button data-tab="practice" class="on">練習</button>
         <button data-tab="songs">曲デモ</button>
       </nav>
 
-      <div class="tab on" id="tab-how">
-        <div class="views" style="margin-top:0">
-          <div>
-            <div class="svgwrap"><canvas id="sideView" aria-label="指のアーチ（断面）"></canvas><div class="overlay" id="sideOverlay"></div></div>
-            <div class="fpick" id="steps"></div>
-            <p class="cap">ネックを輪切りにした図。指はアーチにして指先で押さえ、親指は裏に添えます。下の指のボタンで切り替え。</p>
-          </div>
-          <div><svg id="diagram" viewBox="0 0 150 210" aria-label="コード表"></svg><p class="cap">コード表</p></div>
-        </div>
-        <details class="tips"><summary>押さえるコツ</summary><div id="tips"></div></details>
-      </div>
-
-      <div class="tab" id="tab-practice">
+      <div class="tab on" id="tab-practice">
         <div class="field"><span>進行</span><select id="progSel"></select></div>
         <div class="prog-chords" id="progChords"></div>
         <div class="field" style="margin-top:10px"><span>右手</span><select id="patSel"></select></div>
