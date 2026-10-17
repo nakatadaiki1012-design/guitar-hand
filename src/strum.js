@@ -12,7 +12,8 @@ import { jointName, THUMB_JOINTS } from './handrig.js';
 import { makeThumbModel, solveThumbTo } from './thumb.js';
 
 export { STRUM_X };                          // 弾く場所（geom.js：アコギはサウンドホールの上、エレキはピックアップの間）
-export const PICK_TIP = 14;                  // ピックの中心から先までの長さ（mm）
+export const PICK_TIP = 14;
+const PICK_DEPTH = 1.0;                      // ピックの先が弦の下面より何mm深く通るか                  // ピックの中心から先までの長さ（mm）
 export const STRUM_AMP = 0.42;               // 振りの大きさ（ラジアン）：6本の弦を越えるくらい
 
 const CFG = {
@@ -73,7 +74,7 @@ function localHand(rig, flick=0){
   const pickN = radial;
   const pd = add(norm(sub(iTj.pos, iDj.pos)), mul(palm, 1.2));
   const pickX = norm(sub(pd, mul(pickN, dot(pd, pickN))));
-  const pickC = add(add(mul(add(iP, iD), 0.5), mul(radial, 7.6)), mul(pickX, 4));
+  const pickC = add(add(mul(add(iP, iD), 0.5), mul(radial, 7.6)), mul(pickX, 6));
   const hit = add(pickC, mul(pickX, PICK_TIP));
   // 手の甲のまん中（中指の骨のまん中あたりの、甲の表面）… ここを軸にして指先側を回す
   const m0 = rig.rest[jointName(2,0)], m1 = rig.rest[jointName(2,1)];
@@ -95,7 +96,8 @@ export function rightHandPose(rig, st){
   const U = mul(N,-1), Z = mul(F,-1), Y = U, X = cross(Y,Z);
   const toW = v => add(add(mul(X,v[0]), mul(Y,v[1])), mul(Z,v[2]));
   // θ=0 のとき人差し指の爪が弦のまん中を通るように手首の位置を決める
-  const target = [STRUM_X, 0, stringZ(STRUM_X) + 0.4];
+  // ピックの先は弦の下側まで1mmほどくぐらせる（弦をしっかりはじく）
+  const target = [STRUM_X, 0, stringZ(STRUM_X) - PICK_DEPTH];
   // 手首のしなり（flex：手のひら側へ）と前腕のひねり（roll）を、手首を中心に加える
   const flexA = (st.wrist || 0)*DEG, rollA = ((st.roll || 0) + CFG.rollBias)*DEG;
   const bend = v => R3(F, rollA, R3(X, flexA, v));
@@ -119,8 +121,9 @@ export function rightHandPose(rig, st){
   // 弦の上（6本の幅）では指先を弦の面に合わせ、外側では弧を描いて自然に弦から離れる
   const span = Math.abs(strY(0, STRUM_X));
   const onStr = 1 - Math.min(1, Math.max(0, (Math.abs(hitR[1]) - span)/14));
-  const corr = (stringZ(STRUM_X) + 0.4 - hitR[2])*onStr;
-  const off = [0, 0, corr + Math.max(0, stringZ(STRUM_X) + 0.4 - hitR[2] - corr) + st.lift];   // 表板の方へは沈み込まない
+  const zHit = stringZ(STRUM_X) - PICK_DEPTH;
+  const corr = (zHit - hitR[2])*onStr;
+  const off = [0, 0, corr + Math.max(0, zHit - hitR[2] - corr) + st.lift];   // 表板の方へは沈み込まない
   const place = p => add(rotP(p), off);
   const dir = v => R3(ax, th, v);
   const out = [];

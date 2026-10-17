@@ -134,7 +134,7 @@ function solveBarre(L, K, barre, H){
 }
 
 /* 手全体の形を作って「どれくらい無理があるか（コスト）」を返す */
-function buildHand(chord, rig, prm, thumbStart){
+function buildHand(chord, rig, prm, thumbStart, opts={}){
   const barre = chord.barre;
   const fullBarre = !!barre && (barre.to-barre.from+1) >= 3;
   const H = handFrame(fullBarre, prm);
@@ -161,6 +161,7 @@ function buildHand(chord, rig, prm, thumbStart){
   for(const f in tipX){ anc += tipX[f] - kRest(+f)[0]; cnt++; }
   anc = cnt ? anc/cnt : fretX(1)-2;
   anc = Math.max(4, anc);
+  if(opts.anc != null) anc = opts.anc;                       // メロディ：手の前後の位置はポジションで決まっている
   // 手首の位置：人差し指の付け根が [anc, yK, zK] に来るように
   const kIdx = toWorld(H, [0,0,0], rig.rest[jointName(1,1)]);
   const W = sub([anc, prm.yK, prm.zK], kIdx);
@@ -186,8 +187,13 @@ function buildHand(chord, rig, prm, thumbStart){
       addc('reach'+f, pd*pd*0.5);
     } else {
       mode = 'hover';   // 使わない指：軽く曲げて弦の少し上に浮かせる
-      const x = K[f][0]+2;
-      T = [x, f===4 ? 20 : 12, FRET_TOP + PAD_R + (f===4 ? 10 : 9)];
+      if(opts.hoverP){                                       // メロディ：自分のフレットの上で、次に押さえる準備をして待つ
+        const x = fretX(opts.hoverP + f - 1) - 5;
+        T = [x, strY(opts.hoverS, x) + 2, FRET_TOP + PAD_R + 6];
+      } else {
+        const x = K[f][0]+2;
+        T = [x, f===4 ? 20 : 12, FRET_TOP + PAD_R + (f===4 ? 10 : 9)];
+      }
       pts = solveFinger(f, L, K[f], T, H, 'hover');
       cost += pts.pen*0.3;
     }
@@ -224,7 +230,7 @@ function buildHand(chord, rig, prm, thumbStart){
   const th = solveThumb(rig.thumbModel, v=>toWorld(H, W, v), toWd,
                         { xTarget: (K[1][0]+K[2][0])/2, yTarget: HAND_CFG.thumbY, peek: HAND_CFG.thumbPeek, peekZ: HAND_CFG.thumbPeekZ, start: thumbStart });
   addc('thumb', th.cost);
-  return {cost, parts, H, W, K, M, fingers, tipX, th, toWd, barre};
+  return {cost, parts, H, W, K, M, fingers, tipX, th, toWd, barre, anc};
 }
 
 // 手の向き・位置を少しずつ変えて、いちばん無理のない持ち方をさがす
@@ -274,9 +280,57 @@ function optimizeHand(chord, rig){
 }
 
 export function computePose(chord, rig){
-  const t0 = performance.now();
   let hb = poseCache.get(chord.name);
   if(!hb){ hb = optimizeHand(chord, rig); poseCache.set(chord.name, hb); }
+  return poseFromHand(hb, chord, rig);
+}
+
+/* ---------- メロディ（タブ譜）の手の形 ----------
+   1つのポジション（人差し指のフレット P）の中では、手はほとんど動かさず、指だけを動かして押さえる。
+   ・まず、そのポジションの「構え」を決める（人差し指〜小指が P〜P+3 フレットに並ぶ形で、いちばん無理のない手の位置）
+   ・音ごとに、手の前後の位置はそのまま。高さ・傾きだけを少し（構えから離れるほどコストが増える）調整して、
+     押さえる指をのばす。使わない指は自分のフレットの上で浮かせて待つ */
+function positionAnchor(P, rig){
+  const key = 'anchor@' + P;
+  if(!poseCache.has(key)){
+    const ch = {name:key, frets:[-1, P, P+1, P+2, P+3, -1], fingers:[0,1,2,3,4,0], barre:null, melody:true};
+    poseCache.set(key, optimizeHand(ch, rig));
+  }
+  return poseCache.get(key);
+}
+const STAY = {yK:[3,0.06], zK:[3,0.06], pitch:[4,0.03], roll:[4,0.03]};
+export function computeTabPose(chord, rig, P=1){
+  const key = chord.name + '@' + P;
+  let hb = poseCache.get(key);
+  if(!hb){
+    const an = positionAnchor(P, rig);
+    const ss = chord.frets.map((f,s)=>f>=0 ? s : -1).filter(s=>s>=0);
+    const opts = {anc: an.anc, hoverP: P, hoverS: ss.length ? ss.reduce((a,b)=>a+b,0)/ss.length : 2.5};
+    let prm = {...an.prm, dx1:0, dx2:0, dx3:0, dx4:0};
+    const stay = q => Object.entries(STAY).reduce((c,[k,[,w]])=>c + w*(q[k]-an.prm[k])**2, 0);
+    hb = buildHand(chord, rig, prm, an.th.ang, opts);
+    let bestC = hb.cost;
+    for(const scale of [1, 0.5]){
+      let improved = true, guard = 0;
+      while(improved && guard++ < 6){
+        improved = false;
+        for(const k in STAY) for(const sgn of [-1,1]){
+          const v = Math.min(PRM_LIM[k][1], Math.max(PRM_LIM[k][0], prm[k] + sgn*STAY[k][0]*scale));
+          if(v === prm[k]) continue;
+          const cand = {...prm, [k]: v};
+          const r = buildHand(chord, rig, cand, hb.th.ang, opts), c = r.cost + stay(cand);
+          if(c < bestC - 1e-4){ hb = r; prm = cand; bestC = c; improved = true; }
+        }
+      }
+    }
+    hb.prm = prm;
+    poseCache.set(key, hb);
+  }
+  return poseFromHand(hb, chord, rig);
+}
+
+function poseFromHand(hb, chord, rig){
+  const t0 = performance.now();
   const {H, W, K, M, fingers, tipX, th, toWd, barre} = hb;
   const thumb = th.pts.map(v=>toWorld(H, W, v));
 
@@ -306,7 +360,7 @@ export function computePose(chord, rig){
     const cx = (barre && f===1 && chord.frets[s]===barre.fret) ? fretX(barre.fret)-6 : tipX[f];
     return {contact: cx, fret: fretX(chord.frets[s])};
   });
-  const xs = Object.values(tipX);
+  const xs = hb.anc != null && chord.melody ? [K[1][0], K[4][0]] : Object.values(tipX);
   const center = xs.length ? (Math.min(...xs)+Math.max(...xs))/2 : fretX(1.5);
   window.__thumbInfo = {ang: th.ang, cost: th.cost, total: hb.cost, prm: hb.prm, parts: hb.parts, ms: performance.now()-t0};
   return {joints, fingers, str, chord, target:[Math.min(Math.max(center,40),fretX(13)), 10, -4]};

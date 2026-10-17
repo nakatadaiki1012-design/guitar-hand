@@ -74,10 +74,7 @@ const uvScale = (geo, sx, sy) => { const uv = geo.attributes.uv; for(let i=0;i<u
 const ACOUSTIC_HALF = [[0,0],[2,40],[8,80],[22,115],[45,137],[80,146],[115,143],[160,138],[200,136.5],[240,145],
                        [290,175],[340,194],[380,198.5],[420,192],[460,165],[490,115],[503,60],[508,0]];
 // エレキ（ストラトタイプ）：左右非対称なので1周ぶん。x はネックのはめこみ口からの距離、y は -：6弦側（上のツノが長い）
-const ELECTRIC_LOOP = [[0,-28],[-2,-45],[-10,-62],[-25,-76],[-48,-86],[-68,-92],[-74,-100],[-66,-112],[-45,-124],[-15,-138],[25,-148],
-                       [65,-150],[110,-140],[150,-132],[200,-143],[260,-160],[300,-158],[330,-128],[343,-60],[345,0],
-                       [343,60],[330,128],[300,158],[260,160],[200,144],[150,134],[110,140],[70,138],[30,130],[-8,118],[-30,106],
-                       [-38,94],[-34,84],[-18,74],[-4,62],[2,45],[0,28]];
+const ELECTRIC_LOOP = [[0,-28],[-2,-48],[-8,-66],[-20,-82],[-38,-95],[-58,-104],[-73,-110],[-81,-118],[-79,-128],[-66,-136],[-35,-144],[10,-150],[60,-152],[108,-146],[155,-137],[200,-141],[245,-155],[288,-162],[318,-150],[335,-110],[343,-55],[343,0],[343,55],[335,112],[318,152],[288,163],[245,160],[200,147],[160,138],[118,140],[70,142],[25,136],[-10,128],[-30,121],[-40,112],[-38,103],[-26,94],[-12,82],[-3,64],[2,46],[0,28]];
 export function bodyOutline(){
   let pts;
   if(GTYPE === 'electric') pts = ELECTRIC_LOOP.map(([x,y])=>new THREE.Vector3(BODY_X0+x, y, 0));
@@ -238,9 +235,7 @@ export function buildGuitar(){
     add(bodyGeo, topMat, m=>{ m.position.z = BODY_TOP - BODY_DEPTH + r; });
     // ピックガード（3層：表・白・黒の線が縁に見える）
     const X = BODY_X0;
-    const guardXY = [[12,-30],[8,-46],[0,-60],[-12,-72],[-20,-82],[-12,-92],[10,-102],[50,-112],[100,-110],[150,-98],[200,-80],[224,-62],[228,-44],
-                     [228,42],[244,54],[272,66],[300,84],[310,106],[296,124],[258,134],[205,134],[150,124],[100,122],[55,124],[25,116],
-                     [8,104],[4,86],[8,66],[12,44],[12,30]].map(([x,y])=>[X+x,y]);
+    const guardXY = [[10,-30],[8,-48],[2,-64],[-10,-80],[-28,-94],[-42,-104],[-40,-116],[-14,-124],[40,-128],[100,-122],[160,-104],[205,-82],[226,-62],[228,-44],[228,42],[244,54],[272,66],[300,84],[312,108],[300,130],[262,140],[205,136],[150,128],[100,130],[40,128],[0,118],[-14,108],[-10,96],[2,84],[10,66],[13,46],[12,30]].map(([x,y])=>[X+x,y]);
     const gp = smoothLoop(guardXY, 220);
     add(new THREE.ExtrudeGeometry(shapeOf(gp), {depth:1.6, bevelEnabled:true, bevelThickness:0.4, bevelSize:0.8, bevelSegments:2, curveSegments:12}), guardMat,
         m=>{ m.position.z = BODY_TOP + 0.4; });
@@ -255,12 +250,19 @@ export function buildGuitar(){
       add(new THREE.ExtrudeGeometry(roundRect(17.5, 72, 8.6), {depth:h-1.5, bevelEnabled:true, bevelThickness:1.5, bevelSize:1, bevelOffset:-1, bevelSegments:3}), pickupMat, null, grp);
       for(let s=0;s<NSTR;s++) add(new THREE.CylinderGeometry(2.4,2.4,1,12), pole, m=>{ m.rotation.x = Math.PI/2; m.position.set(0, strY(s, px)/Math.cos(rot*DEG), h+0.1); }, grp);
     });
-    // トレモロブリッジ：台座の板と6つのサドル
-    add(new THREE.BoxGeometry(56, 76, 2), chrome, m=>{ m.position.set(SCALE_LEN+14, 0, BODY_TOP+1); });
+    // トレモロブリッジ：台座の板と6つのサドル（1本ずつ分かれていて、すき間がある。弦はサドルの溝を通って後ろの穴へ）
+    const brushed = std({color:'#c9cacd', metalness:1, roughness:0.32});
+    add(new THREE.BoxGeometry(58, 74, 2.2), brushed, m=>{ m.position.set(SCALE_LEN+13, 0, BODY_TOP+1.1); });
+    add(new THREE.BoxGeometry(6, 74, 6), brushed, m=>{ m.position.set(SCALE_LEN+38, 0, BODY_TOP+5); });          // 弦を通す後ろの壁
     for(let s=0;s<NSTR;s++){
-      const sx = SCALE_LEN + [3.2,2.6,2.2,1.4,1.0,0.4][s], y = strY(s, SCALE_LEN), top = stringZ(sx);
-      const h = top - (BODY_TOP+2);
-      add(new THREE.BoxGeometry(15, 10.2, h), chrome, m=>{ m.position.set(sx+3, y, BODY_TOP+2+h/2); });
+      const sx = SCALE_LEN + [3.2,2.6,2.2,1.4,1.0,0.4][s], y = strY(s, SCALE_LEN), top = stringZ(sx) - 0.3;
+      const h = top - (BODY_TOP+2.2);
+      // サドル：前が低く後ろが高い、曲げた板の形（横から見ると台形）
+      const sh = new THREE.Shape(); sh.moveTo(-3, 0); sh.lineTo(14, 0); sh.lineTo(14, h*0.55); sh.lineTo(2, h); sh.lineTo(-1, h); sh.lineTo(-3, h*0.7); sh.closePath();
+      add(new THREE.ExtrudeGeometry(sh, {depth:8.4, bevelEnabled:true, bevelThickness:0.5, bevelSize:0.5, bevelSegments:1}), brushed,
+          m=>{ m.rotation.x = Math.PI/2; m.position.set(sx, y + 4.2, BODY_TOP+2.2); });
+      add(new THREE.CylinderGeometry(1.1,1.1,h*0.9,8), blackDot, m=>{ m.rotation.x = Math.PI/2; m.position.set(sx+8, y-2.6, BODY_TOP+2.2+h*0.45); });   // 高さ調整のねじ
+      add(new THREE.CylinderGeometry(1.1,1.1,h*0.9,8), blackDot, m=>{ m.rotation.x = Math.PI/2; m.position.set(sx+8, y+2.6, BODY_TOP+2.2+h*0.45); });
     }
     // アーム
     const arm = new THREE.CatmullRomCurve3([[SCALE_LEN+30,40,BODY_TOP+3],[SCALE_LEN+30,48,BODY_TOP+12],[SCALE_LEN+60,90,BODY_TOP+16],[SCALE_LEN+110,150,BODY_TOP+18]].map(p=>new THREE.Vector3(...p)));
@@ -275,7 +277,7 @@ export function buildGuitar(){
     add(new THREE.BoxGeometry(5, 7, 12), knobMat, m=>{ m.position.set(X+203, 95, gTop+6); m.rotation.z = -35*DEG; });
     // ストラップピン（おしりと上のツノの先）
     add(new THREE.CylinderGeometry(3.5,4.5,9,16), chrome, m=>{ m.rotation.z = Math.PI/2; m.position.set(maxX+3, 0, BODY_TOP-BODY_DEPTH/2); });
-    add(new THREE.CylinderGeometry(3.5,4.5,9,16), chrome, m=>{ m.position.set(X-77, -101, BODY_TOP-BODY_DEPTH/2); });
+    add(new THREE.CylinderGeometry(3.5,4.5,9,16), chrome, m=>{ m.position.set(X-84, -120, BODY_TOP-BODY_DEPTH/2); });
   }
 
   /* ---------- ネック（指板の下の半楕円） ---------- */
@@ -401,7 +403,7 @@ export function buildGuitar(){
       const info = strInfo && strInfo[s];
       if(info) pts.push([info.contact, y(info.contact), FRET_TOP+r+0.15], [info.fret, y(info.fret), FRET_TOP+r]);
       pts.push([sx, y(sx), stringZ(sx)+r]);
-      pts.push(electric ? [SCALE_LEN+32, y(SCALE_LEN), BODY_TOP+2.2] : [SCALE_LEN+16, y(SCALE_LEN), BODY_TOP+8.6]);
+      pts.push(electric ? [SCALE_LEN+35, y(SCALE_LEN), BODY_TOP+6.5] : [SCALE_LEN+16, y(SCALE_LEN), BODY_TOP+8.6]);
       segs.forEach((m,k)=>{ if(k < pts.length-1) placeSeg(m, pts[k], pts[k+1], r); else m.visible = false; });
     }
   }
