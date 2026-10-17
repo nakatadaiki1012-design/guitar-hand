@@ -15,12 +15,12 @@ export const STRUM_X = fretX(16.5);          // 弾く場所：ネックとボ�
 export const STRUM_AMP = 0.30;               // 振りの大きさ（ラジアン）
 
 const CFG = {
-  F: [-0.45, 0.85, -0.25],                   // 手首→指の付け根（前腕の向きから、手首で床の方へ曲げる）
-  N: [-0.15, -0.25, -0.96],                  // 手のひらはボディの方を向く（手の甲は客席側）
+  wristFlex: 32,                             // 手首は手のひら側へ軽く曲げるだけ（横には曲げない）
+  palm: [0, -0.15, -1],                      // 手のひらはボディの方を向く（手の甲は客席側）
   curl:  {1:[30,70,75], 2:[66,95,55], 3:[72,98,55], 4:[76,98,55]},  // 指の曲げ（付け根・第二・第一関節）
   splay: {1:6, 2:0, 3:-7, 4:-15},            // 指を軽く寄せる（度）
   pivotUp: 120,                              // 振りの中心：弦から客席側へ何mmか
-  elbow: [0.78, -0.50, -0.38],               // 手首→ひじの向き：前腕はウクレレの尾側（ボディのおしり側）から、上の縁にのせて来る
+  elbow: [0.55, -0.50, -0.67],               // 手首→ひじの向き：前腕はウクレレの尾側から、ボディの上の縁にのせて斜めに来る
 };
 
 const R3 = (axis, a, v) => { const k = norm(axis), c = Math.cos(a), s = Math.sin(a);
@@ -71,7 +71,12 @@ function localHand(rig){
 /* st = {theta: 振りの角度（＋がダウン方向）, lift: 弦から浮かせる量 mm} */
 export function rightHandPose(rig, st){
   const {J, hit} = localHand(rig);
-  let F = norm(CFG.F), N = norm(sub(CFG.N, mul(F, dot(CFG.N,F))));
+  // 手の向きは前腕の向きから決める：前腕の延長線から、手のひら側へ wristFlex 度だけ曲げる
+  const fa0 = mul(norm(CFG.elbow), -1);                         // ひじ→手首
+  const P0 = norm(sub(CFG.palm, mul(fa0, dot(CFG.palm, fa0))));  // 前腕に直交する「手のひら側」
+  const a = CFG.wristFlex*DEG;
+  let F = norm(add(mul(fa0, Math.cos(a)), mul(P0, Math.sin(a))));
+  let N = norm(sub(P0, mul(F, dot(P0, F))));
   const U = mul(N,-1), Z = mul(F,-1), Y = U, X = cross(Y,Z);
   const toW = v => add(add(mul(X,v[0]), mul(Y,v[1])), mul(Z,v[2]));
   // θ=0 のとき人差し指の爪が弦のまん中を通るように手首の位置を決める
@@ -90,8 +95,9 @@ export function rightHandPose(rig, st){
   const out = [];
   const Wp = place(W);
   out.push({name:'wrist', pos: Wp, fwd: dir(F), dorsal: dir(U)});
-  const E = add(W, mul(norm(CFG.elbow), 260));      // ひじは動かさない（前腕は手首について少しだけ振れる）
-  const fa = norm(sub(Wp, E));
+  // 見えている腕は手首の少し先までなので、前腕は手首からそのまま伸ばす
+  // （手首で強く折ると、短い腕の皮膚がねじれてギザギザに見えるため）。少しだけ前腕の向きに寄せる
+  const fa = norm(add(mul(dir(F), 0.8), mul(dir(fa0), 0.2)));
   out.push({name:'forearm', pos: Wp, fwd: fa, dorsal: sub(dir(U), mul(fa, dot(dir(U),fa)))});
   for(const j of J) out.push({name: j.name, pos: place(add(W, toW(j.pos))), fwd: norm(dir(toW(j.fwd))), dorsal: norm(dir(toW(j.dorsal)))});
   return {joints: out, tip: place(add(W, toW(hit)))};
