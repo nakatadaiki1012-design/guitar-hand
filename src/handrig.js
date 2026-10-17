@@ -34,6 +34,7 @@ export async function loadHand(skinMaterial){
   const newBones = [...sk.bones, forearm];
   const newInv = [...sk.boneInverses.map(m=>m.clone()), sk.boneInverses[wristIdx].clone()];
   extendForearm(mesh.geometry, bones['wrist'], wristIdx, sk.bones.length);
+  sharpenWebs(mesh.geometry, bones, sk.bones);
   mesh.geometry = smoothSkinnedGeometry(mesh.geometry, 2);
   mesh.bind(new THREE.Skeleton(newBones, newInv), mesh.bindMatrix);
   mesh.material = skinMaterial;
@@ -100,6 +101,43 @@ function extendForearm(geo, wrist, wristIdx, forearmIdx){
   }
   P.needsUpdate = true;
   geo.attributes.skinIndex.needsUpdate = true; geo.attributes.skinWeight.needsUpdate = true;
+}
+
+/* 指の股の皮膚：モデルでは隣の指どうしの影響が第一関節の半分近くまで混ざっていて、
+   指を別々に曲げると「水かき」のように膜が張って指がくっついて見える。
+   付け根の近く（股の深さ約8mm）だけ混ぜて、それより先はいちばん近い指の骨だけに従わせる */
+function sharpenWebs(geo, bones, skBones){
+  const P = geo.attributes.position, SI = geo.attributes.skinIndex, SW = geo.attributes.skinWeight;
+  const F = ['index','middle','ring','pinky'];
+  const seg = F.map(f=>{
+    const ids = ['phalanx-proximal','phalanx-intermediate','phalanx-distal','tip'].map(j=>bones[`${f}-finger-${j}`]);
+    return { pts: ids.map(b=>b.position.clone()), idx: ids.slice(0,3).map(b=>skBones.indexOf(b)) };
+  });
+  const fingerOf = new Map();
+  seg.forEach((sg,k)=>sg.idx.forEach(i=>fingerOf.set(i,k)));
+  const v = new THREE.Vector3(), q = new THREE.Vector3();
+  const segD = (p,a,b) => { const ab = b.clone().sub(a); const t = Math.min(1,Math.max(0, p.clone().sub(a).dot(ab)/ab.lengthSq())); return p.distanceTo(q.copy(a).addScaledVector(ab,t)); };
+  for(let i=0;i<P.count;i++){
+    const js = [SI.getX(i),SI.getY(i),SI.getZ(i),SI.getW(i)], ws = [SW.getX(i),SW.getY(i),SW.getZ(i),SW.getW(i)];
+    const per = new Map();
+    js.forEach((j,k)=>{ if(ws[k]>0 && fingerOf.has(j)){ const f = fingerOf.get(j); per.set(f,(per.get(f)||0)+ws[k]); } });
+    if(per.size < 2) continue;
+    v.fromBufferAttribute(P,i);
+    // いちばん近い指と、その指の付け根からの距離
+    let best = -1, bd = 1e9;
+    for(const f of per.keys()){ const sg = seg[f]; const d = Math.min(segD(v,sg.pts[0],sg.pts[1]), segD(v,sg.pts[1],sg.pts[2])); if(d<bd){ bd=d; best=f; } }
+    const sg = seg[best], ax = sg.pts[1].clone().sub(sg.pts[0]);
+    const along = v.clone().sub(sg.pts[0]).dot(ax.clone().normalize());
+    const keep = Math.min(1, Math.max(0, (along-0.004)/0.006));   // 0〜1：付け根から4〜10mmで切り替え
+    if(keep <= 0) continue;
+    for(let k=0;k<4;k++){
+      if(!fingerOf.has(js[k])) continue;
+      if(fingerOf.get(js[k]) !== best) ws[k] *= (1-keep);
+    }
+    const sum = ws.reduce((a,b)=>a+b,0) || 1;
+    SW.setXYZW(i, ws[0]/sum, ws[1]/sum, ws[2]/sum, ws[3]/sum);
+  }
+  SW.needsUpdate = true;
 }
 
 // ポーズ（関節の位置と向き）をモデルに反映

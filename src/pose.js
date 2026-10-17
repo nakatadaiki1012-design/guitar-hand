@@ -99,6 +99,18 @@ function padToTip(pts, l3){
   return [pts[0], pts[1], pts[2], add(pts[2], mul(norm(sub(pts[3],pts[2])), l3))];
 }
 
+// 2本の線分のいちばん近い距離
+function segDist(p1,q1,p2,q2){
+  const d1 = sub(q1,p1), d2 = sub(q2,p2), r = sub(p1,p2);
+  const a = dot(d1,d1), e = dot(d2,d2), f = dot(d2,r), c = dot(d1,r), b = dot(d1,d2);
+  const den = a*e - b*b;
+  let s = den > 1e-9 ? Math.min(1, Math.max(0, (b*f - c*e)/den)) : 0;
+  let t = (b*s + f)/e;
+  if(t < 0){ t = 0; s = Math.min(1, Math.max(0, -c/a)); }
+  else if(t > 1){ t = 1; s = Math.min(1, Math.max(0, (b-c)/a)); }
+  return vlen(sub(add(p1, mul(d1,s)), add(p2, mul(d2,t))));
+}
+
 function ik3(A, C, l1, l2, pole){
   const d = sub(C,A); let dist = vlen(d);
   dist = Math.min(Math.max(dist, Math.abs(l1-l2)+0.01), l1+l2-0.01);
@@ -132,7 +144,13 @@ function buildHand(chord, rig, prm, thumbStart){
   for(const f in used){ if(barre && +f===1) continue; (byFret[used[f].fret] ||= []).push(+f); }
   for(const fr in byFret){
     const list = byFret[fr].sort((a,b)=>a-b), n = list.length;
-    list.forEach((f,i)=>{ tipX[f] = fretX(+fr) - 4.5 - (n-1-i)*4.5; });
+    // 指先の前後位置もシミュレーションで調整（フレットとフレットの間に収める）。
+    // 同じフレットに何本か並ぶときは、指の順番どおり斜めに並べる（人差し指がいちばんナット寄り）
+    const hi = fretX(+fr) - 2.5, lo = fretX(+fr-1) + 1.5, gap = Math.min(8, (hi-lo)/Math.max(1,n-1));
+    const xs = list.map((f,i)=> fretX(+fr) - 4.5 - (n-1-i)*gap + (prm['dx'+f] || 0));
+    for(let i=n-1;i>=0;i--){ xs[i] = Math.min(xs[i], i<n-1 ? xs[i+1]-gap : hi); }
+    for(let i=0;i<n;i++){ xs[i] = Math.max(xs[i], i>0 ? xs[i-1]+gap : lo); }
+    list.forEach((f,i)=>{ tipX[f] = Math.min(hi, xs[i]); });
   }
   if(barre) tipX[1] = fretX(barre.fret) - 6;
 
@@ -148,7 +166,8 @@ function buildHand(chord, rig, prm, thumbStart){
   const K = {}, M = {};
   for(let f=1; f<=4; f++){ K[f] = toWorld(H, W, rig.rest[jointName(f,1)]); M[f] = toWorld(H, W, rig.rest[jointName(f,0)]); }
 
-  let cost = 0;
+  let cost = 0; const parts = {};
+  const addc = (k,v) => { parts[k] = (parts[k]||0)+v; cost += v; };
   const fingers = {};
   for(let f=1; f<=4; f++){
     const L = rig.lengths[f];
@@ -160,10 +179,10 @@ function buildHand(chord, rig, prm, thumbStart){
       const x = tipX[f];
       T = [x, strY(string,x)+1.0, FRET_TOP + 0.35 + PAD_R];
       pts = solveFinger(f, L, K[f], T, H, 'press');
-      cost += pts.pen;
+      addc('pen'+f, pts.pen);
       // 届かない／縮こまりすぎ：指先が目標からずれた分
       const pd = vlen(sub(add(pts[2], mul(norm(sub(pts[3],pts[2])), L[2]+PAD_EXT)), T));
-      cost += pd*pd*0.5;
+      addc('reach'+f, pd*pd*0.5);
     } else {
       mode = 'hover';   // 使わない指：軽く曲げて弦の少し上に浮かせる
       const x = K[f][0]+2;
@@ -174,6 +193,21 @@ function buildHand(chord, rig, prm, thumbStart){
     const axis = norm(cross(sub(pts[3],pts[0]), H.N));
     fingers[f] = {mode, pts, string, axis};
   }
+  // 指どうしがぶつからない（重なると指がくっついて見える）
+  for(let f=1; f<=4; f++) for(let g=f+1; g<=4; g++){
+    const A = fingers[f].pts, B = fingers[g].pts;
+    for(let a=0;a<3;a++) for(let b=0;b<3;b++){
+      // 隣の指の付け根どうしは、もともと軽く触れ合っているので少しだけゆるくする
+      const base = (a===0 && b===0 && g===f+1);
+      const d = base ? segDist(add(A[0], mul(sub(A[1],A[0]),0.35)), A[1], add(B[0], mul(sub(B[1],B[0]),0.35)), B[1])
+                     : segDist(A[a],A[a+1],B[b],B[b+1]);
+      const r = (base ? 0.78 : 0.84)*((RAD[f][a]+RAD[f][a+1])/2 + (RAD[g][b]+RAD[g][b+1])/2) - 2.5;  // 指どうしは少し押し合ってもよい
+      if(d < r) addc('collide'+f+g, (r-d)*(r-d)*1.8);
+    }
+  }
+  // 音がよく鳴るのはフレットのすぐ近く
+  for(const f in tipX) if(!(barre && +f===1)) cost += (fretX(used[f].fret) - tipX[f]) * 0.06;
+
   // 手のひら・手首がネックにめり込まない
   const palmPts = [];
   for(let f=1; f<=4; f++){ palmPts.push([K[f],9], [M[f],11], [mul(add(K[f],M[f]),0.5),12]); }
@@ -188,23 +222,22 @@ function buildHand(chord, rig, prm, thumbStart){
   const toWd = v => toWorld(H, [0,0,0], v);
   const th = solveThumb(rig.thumbModel, v=>toWorld(H, W, v), toWd,
                         { xTarget: (K[1][0]+K[2][0])/2, yTarget: -5, start: thumbStart });
-  cost += th.cost;
-  return {cost, H, W, K, M, fingers, tipX, th, toWd, barre};
+  addc('thumb', th.cost);
+  return {cost, parts, H, W, K, M, fingers, tipX, th, toWd, barre};
 }
 
 // 手の向き・位置を少しずつ変えて、いちばん無理のない持ち方をさがす
-const PRM_STEP = {pitch:8, yaw:8, roll:8, yK:5, zK:5};
-const PRM_LIM  = {pitch:[-45,45], yaw:[-35,35], roll:[-35,35], yK:[26,56], zK:[-34,2]};
+const PRM_STEP = {pitch:8, yaw:8, roll:8, yK:5, zK:5, dx1:4, dx2:4, dx3:4, dx4:4};
+const PRM_LIM  = {pitch:[-45,45], yaw:[-35,35], roll:[-35,35], yK:[26,64], zK:[-34,2], dx1:[-24,4], dx2:[-24,4], dx3:[-24,4], dx4:[-24,4]};
 const poseCache = new Map();
-function optimizeHand(chord, rig){
-  const fullBarre = !!chord.barre && (chord.barre.to-chord.barre.from+1) >= 3;
-  let prm = {pitch:0, yaw:0, roll:0, yK: fullBarre ? HAND_CFG.yKb : HAND_CFG.yK, zK: fullBarre ? HAND_CFG.zKb : HAND_CFG.zK};
+function localSearch(chord, rig, prm, pressing, scales){
   let best = buildHand(chord, rig, prm), thStart = best.th.ang;
-  for(let scale=1; scale>0.1; scale*=0.5){
+  for(const scale of scales){
     let improved = true, guard = 0;
     while(improved && guard++ < 12){
       improved = false;
       for(const k in PRM_STEP) for(const sgn of [-1,1]){
+        if(k[0]==='d' && k[1]==='x' && !pressing.has(+k[2])) continue;
         const v = Math.min(PRM_LIM[k][1], Math.max(PRM_LIM[k][0], prm[k] + sgn*PRM_STEP[k]*scale));
         if(v === prm[k]) continue;
         const cand = {...prm, [k]: v};
@@ -215,6 +248,26 @@ function optimizeHand(chord, rig){
   }
   best.prm = prm;
   return best;
+}
+function optimizeHand(chord, rig){
+  const fullBarre = !!chord.barre && (chord.barre.to-chord.barre.from+1) >= 3;
+  const base = {pitch:0, yaw:0, roll:0, yK: fullBarre ? HAND_CFG.yKb : HAND_CFG.yK, zK: fullBarre ? HAND_CFG.zKb : HAND_CFG.zK, dx1:0, dx2:0, dx3:0, dx4:0};
+  const pressing = new Set(chord.fingers.filter(Boolean));
+  // いくつかの出発点から探して、いちばん無理のない形を選ぶ（行き止まりにはまらないように）
+  const starts = [
+    base,
+    {...base, pitch:20, yaw:20, yK:52},
+    {...base, pitch:-20, roll:-15, yK:44},
+    {...base, dx1:-14, dx2:-7, yaw:15},
+    {...base, dx1:-18, dx2:-9, dx3:-3, pitch:15, yK:50},
+    {...base, roll:15, zK:-22, yK:40},
+  ];
+  let best = null;
+  for(const st of starts){
+    const r = localSearch(chord, rig, {...st}, pressing, [1, 0.5]);
+    if(!best || r.cost < best.cost) best = r;
+  }
+  return localSearch(chord, rig, best.prm, pressing, [0.5, 0.25, 0.125]);
 }
 
 export function computePose(chord, rig){
@@ -252,7 +305,7 @@ export function computePose(chord, rig){
   });
   const xs = Object.values(tipX);
   const center = xs.length ? (Math.min(...xs)+Math.max(...xs))/2 : fretX(1.5);
-  window.__thumbInfo = {ang: th.ang, cost: th.cost, total: hb.cost, prm: hb.prm, ms: performance.now()-t0};
+  window.__thumbInfo = {ang: th.ang, cost: th.cost, total: hb.cost, prm: hb.prm, parts: hb.parts, ms: performance.now()-t0};
   return {joints, fingers, str, chord, target:[Math.min(Math.max(center,30),80), 10, -4]};
 }
 
