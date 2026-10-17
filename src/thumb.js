@@ -79,16 +79,27 @@ export function solveThumb(M, toW, toWd, opts){
     const fwd = norm(sub(W[3], W[2]));
     const pad = add(add(W[3], mul(fwd, 2)), mul(nail, -6));
     let c = 0;
-    // 1) 指の腹がネックの裏に軽く当たる（すき間 0〜1mm）
-    const g = neckSD(pad);
-    c += g > 1 ? (g-1)*(g-1)*0.6 : g < -1 ? (g+1)*(g+1)*3 : 0;
-    // 2) 位置の好み：人差し指と中指の間の裏、ネックのまん中より少し4弦側
-    c += Math.pow(pad[0]-xTarget, 2)*0.02 + Math.pow(pad[1]-yTarget, 2)*0.03;
-    // 2b) 深く握る：親指の先がネックの上の縁（1弦Gの側）から少しのぞく
-    if(opts.peek){
+    if(!opts.peek){
+      // 1) 指の腹がネックの裏に軽く当たる（すき間 0〜1mm）
+      const g = neckSD(pad);
+      c += g > 1 ? (g-1)*(g-1)*0.6 : g < -1 ? (g+1)*(g+1)*3 : 0;
+      // 2) 位置の好み：人差し指と中指の間の裏、ネックのまん中より少し4弦側
+      c += Math.pow(pad[0]-xTarget, 2)*0.02 + Math.pow(pad[1]-yTarget, 2)*0.03;
+    } else {
+      // 1') 深く握る：ネックの上の肩に当たるのは親指の腹ではなく、付け根〜まん中の節のあたり
+      let gm = 1e9, cp = null;
+      for(let t=0;t<=1.001;t+=0.125){
+        const s = t < 0.5 ? 1 : 2, u = t < 0.5 ? t*2 : (t-0.5);          // まん中の節〜先の節の半分
+        const P = add(W[s], mul(sub(W[s+1],W[s]), u));
+        const g = neckSD(P) - THUMB_R[s];
+        if(g < gm){ gm = g; cp = P; }
+      }
+      c += gm > 1 ? (gm-1)*(gm-1)*0.6 : 0;
+      c += Math.pow(cp[0]-xTarget, 2)*0.02;
+      // 2b) 親指の先がネックの上の縁（1弦Gの側）からのぞく
       const over = W[3][1] + halfW(W[3][0]) + opts.peek;        // 縁より peek mm 上に出ればゼロ
       if(over > 0) c += over*over*0.3;
-      const back = -12 - W[3][2];                                 // 先はネックの裏ではなく、横の高さまで回り込む
+      const back = (opts.peekZ ?? -12) - W[3][2];                                 // 先はネックの裏ではなく、横の高さまで回り込む
       if(back > 0) c += back*back*0.15;
     }
     // 3) 親指の骨がネックにめり込まない

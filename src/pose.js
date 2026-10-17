@@ -24,7 +24,7 @@ export const HAND_CFG = {
   yK: 36, zK: -12, yKb: 40, zKb: -10,             // 人差し指の付け根の位置
   arm: [0.45, 0.50, -0.74],                       // 手首→肘の向き
   tipTilt: 28,                                    // 指先は真上から何度くらい傾けて当てるか
-  thumbY: -12, thumbPeek: 6,                      // 親指の腹の位置（ネック裏のやや1弦G寄り）と、先をネックの上の縁から何mmのぞかせるか
+  thumbY: -14, thumbPeek: 12, thumbPeekZ: -6,                     // 親指の腹の位置（ネック裏のやや1弦G寄り）と、先をネックの上の縁から何mmのぞかせるか
 };
 function handFrame(barre, prm){
   const C = HAND_CFG;
@@ -222,14 +222,14 @@ function buildHand(chord, rig, prm, thumbStart){
   rig.thumbModel ||= makeThumbModel(THUMB_JOINTS.map(n=>rig.rest[n]), THUMB_JOINTS.map(n=>rig.restBasis[n]), [0,-1,0]);
   const toWd = v => toWorld(H, [0,0,0], v);
   const th = solveThumb(rig.thumbModel, v=>toWorld(H, W, v), toWd,
-                        { xTarget: (K[1][0]+K[2][0])/2, yTarget: HAND_CFG.thumbY, peek: HAND_CFG.thumbPeek, start: thumbStart });
+                        { xTarget: (K[1][0]+K[2][0])/2, yTarget: HAND_CFG.thumbY, peek: HAND_CFG.thumbPeek, peekZ: HAND_CFG.thumbPeekZ, start: thumbStart });
   addc('thumb', th.cost);
   return {cost, parts, H, W, K, M, fingers, tipX, th, toWd, barre};
 }
 
 // 手の向き・位置を少しずつ変えて、いちばん無理のない持ち方をさがす
 const PRM_STEP = {pitch:8, yaw:8, roll:8, yK:5, zK:5, dx1:4, dx2:4, dx3:4, dx4:4};
-const PRM_LIM  = {pitch:[-45,45], yaw:[-35,35], roll:[-35,35], yK:[26,64], zK:[-34,2], dx1:[-24,4], dx2:[-24,4], dx3:[-24,4], dx4:[-24,4]};
+const PRM_LIM  = {pitch:[-45,45], yaw:[-35,35], roll:[-35,35], yK:[18,64], zK:[-42,2], dx1:[-24,4], dx2:[-24,4], dx3:[-24,4], dx4:[-24,4]};
 const poseCache = new Map();
 function localSearch(chord, rig, prm, pressing, scales){
   let best = buildHand(chord, rig, prm), thStart = best.th.ang;
