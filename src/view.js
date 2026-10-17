@@ -11,20 +11,24 @@ import { rightHandPose, STRUM_X } from './strum.js';
 import { slotCenter, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG } from './geom.js';
 import { STRING_NAMES, FINGER_COLORS, FINGER_NAMES } from './data.js';
 
+/* ウクレレは演奏する時のように立てて持っている：
+   空（上）は -y（1弦Gの側）、指板の正面（客席）は +z、ボディは +x（弾く人から見て右）
+   カメラの向き：el = 見下ろす角度（水平が0°）、az = 正面(+z)からボディ側(+x)へ回した角度 */
 export const VIEWS = {
-  diag:  {label:'ななめ', pol:50, az:-42, dist:260, up:[0,0,1],  name:'ななめ（手の形がいちばん分かりやすい）'},
-  self:  {label:'自分目線', pol:46, az:-90, dist:320, up:[0,0,1],  name:'自分目線（弾いている人の目から）'},
-  front: {label:'正面', pol:16, az:-80, dist:340, up:[0,-1,0], name:'正面（向かい合った先生から）'},
-  side:  {label:'横から', pol:78, az:160, dist:320, up:[0,0,1],  name:'横から（ボディ側から）'},
-  both:  {label:'両手', pol:58, az:-78, dist:700, up:[0,0,1],  name:'両手（全体を見る）', fixed:[150, 15, -10]},
-  right: {label:'右手', pol:62, az:-118, dist:400, up:[0,0,1],  name:'右手（ストロークを見る）', fixed:[STRUM_X, 0, 25]}
+  diag:  {label:'ななめ', el:31, az:42, dist:260,  name:'ななめ（手の形がいちばん分かりやすい）'},
+  self:  {label:'自分目線', el:58, az:6, dist:320,  name:'自分目線（上からのぞき込む）'},
+  front: {label:'正面', el:14, az:3, dist:340, name:'正面（向かい合った先生から）'},
+  side:  {label:'横から', el:14, az:-72, dist:320,  name:'横から（ヘッド側から）'},
+  both:  {label:'両手', el:22, az:12, dist:700,  name:'両手（全体を見る）', fixed:[150, 15, -10]},
+  right: {label:'右手', el:30, az:28, dist:540,  name:'右手（ストロークを見る）', fixed:[STRUM_X, 0, 25]}
 };
+const UP = [0,-1,0];
 
 export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverlay, onTap}){
   const mkRenderer = canvas => {
-    const r = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+    const r = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'});
     r.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.5));
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;   // やわらかい影より軽い方式
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
     r.outputColorSpace = THREE.SRGBColorSpace;
     r.localClippingEnabled = true;
@@ -39,14 +43,15 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
 
   // 光：天井側・客席側からのやわらかい主光源＋まわりの反射
   const beach = addBeach(scene);
-  scene.add(new THREE.HemisphereLight('#eaf6ff', '#d8c7a0', 0.7));
+  const hemi = new THREE.HemisphereLight('#eaf6ff', '#d8c7a0', 0.7); hemi.position.set(0,-1,0);   // 上（空）は -y
+  scene.add(hemi);
   const key = new THREE.DirectionalLight('#fff6ea', 2.6);
-  key.position.set(-160, -260, 420); key.target.position.set(60, 10, -10);
+  key.position.set(-160, -420, 380);   // 空の高い所（-y）・客席側（+z）から
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
   Object.assign(key.shadow.camera, {left:-300, right:300, top:300, bottom:-300, near:50, far:1400});
   key.target.position.set(150, 0, -40);
-  key.shadow.bias = -0.0004; key.shadow.normalBias = 0.8; key.shadow.radius = 4;
+  key.shadow.bias = -0.0004; key.shadow.normalBias = 0.8;
   scene.add(key, key.target);
   const rim = new THREE.DirectionalLight('#ffd9b8', 0.6); rim.position.set(300, 200, 150); scene.add(rim);
 
@@ -59,16 +64,17 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   uke.clipMats.forEach(m=>{ m.clippingPlanes = [clipPlane, clipFar]; m.envMapIntensity = 0.5; });
 
   // 手：肌は少し透明感のある質感（光が当たる縁がほんのり赤くなる）
-  const skin = new THREE.MeshPhysicalMaterial({
-    color:'#e2a283', roughness:0.5, metalness:0,
-    sheen:0.6, sheenRoughness:0.5, sheenColor:new THREE.Color('#ff9d80'),
-    clearcoat:0.06, clearcoatRoughness:0.6, envMapIntensity:0.6
+  // （以前の「光沢の層を重ねる」質感は重いので、ふつうの質感＋赤みの足し算で似せる）
+  const skin = new THREE.MeshStandardMaterial({
+    color:'#e2a283', roughness:0.52, metalness:0, envMapIntensity:0.6
   });
   skin.onBeforeCompile = sh => {
     // 影の境目を赤みがかってやわらかくする（皮膚の下で光が散る感じ）
     sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
       float wrapL = clamp(dot(normal, normalize(vec3(-0.25,-0.45,0.85)))*0.5+0.5, 0.0, 1.0);
-      reflectedLight.indirectDiffuse += diffuseColor.rgb * vec3(0.32,0.09,0.05) * (1.0-wrapL) * 0.9;`);
+      reflectedLight.indirectDiffuse += diffuseColor.rgb * vec3(0.32,0.09,0.05) * (1.0-wrapL) * 0.9;
+      float rimL = pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 3.0);
+      reflectedLight.indirectDiffuse += vec3(1.0,0.62,0.5) * rimL * 0.12;`);
   };
   /* 腕は手首の少し先までだけ見せる：手首から30〜85mmの間で、だんだん透明にして消す */
   function addArmFade(mat, rig, depthOnly){
@@ -111,22 +117,30 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   const glowTex = (()=>{ const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
     const gr = g.createRadialGradient(32,32,0,32,32,32); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(.35,'rgba(255,255,255,.6)'); gr.addColorStop(1,'rgba(255,255,255,0)');
     g.fillStyle = gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
+  // 弦4本ぶんの印は最初に1回だけ作っておき、毎回は位置と色を変えるだけ（毎フレーム作り直すと重い）
+  const discGeo = new THREE.CircleGeometry(4.6, 32), ringGeo = new THREE.TorusGeometry(2.2, 0.45, 8, 28);
+  const markSet = [0,1,2,3].map(()=>{
+    const disc = new THREE.Mesh(discGeo, markMats[1]); disc.renderOrder = 3;
+    // 弦が指に当たって沈んでいるところ：光る輪（手を透かして見えるように、いちばん手前に描く）
+    const ring = new THREE.Mesh(ringGeo, ringMats[1]); ring.rotation.y = Math.PI/2; ring.renderOrder = 10;
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, transparent:true, depthTest:false, depthWrite:false, opacity:0.9}));
+    glow.scale.set(13,13,1); glow.renderOrder = 9;
+    marks.add(disc, ring, glow);
+    return {disc, ring, glow};
+  });
   function placeMarks(pose, ghost){
-    marks.clear();
     const chord = pose.chord;
     for(let s=0;s<4;s++){
-      const info = pose.str[s]; if(!info) continue;
+      const m = markSet[s], info = pose.str[s];
+      m.disc.visible = m.ring.visible = m.glow.visible = !!info;
+      if(!info) continue;
       const f = chord.fingers[s] || 1;
       const x = info.contact, y = strY(s, x);
-      // 指板の上の丸
-      const disc = new THREE.Mesh(new THREE.CircleGeometry(4.6, 32), markMats[f]);
-      disc.position.set(x, y, 0.08); disc.renderOrder = 3; marks.add(disc);
-      // 弦が指に当たって沈んでいるところ：光る輪（手を透かして見えるように、いちばん手前に描く）
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.45, 8, 28), ringMats[f]);
-      ring.position.set(x, y, FRET_TOP + STRING_R[s] + 0.2); ring.rotation.y = Math.PI/2; ring.renderOrder = 10;
-      ring.visible = ghost; marks.add(ring);
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, color:FINGER_COLORS[f], transparent:true, depthTest:false, depthWrite:false, opacity: ghost ? 0.9 : 0.0}));
-      glow.position.set(x, y, FRET_TOP + 1.2); glow.scale.set(13,13,1); glow.renderOrder = 9; marks.add(glow);
+      m.disc.material = markMats[f]; m.ring.material = ringMats[f]; m.glow.material.color.set(FINGER_COLORS[f]);
+      m.disc.position.set(x, y, 0.08);
+      m.ring.position.set(x, y, FRET_TOP + STRING_R[s] + 0.2);
+      m.glow.position.set(x, y, FRET_TOP + 1.2);
+      m.ring.visible = m.glow.visible = ghost;
     }
   }
   // 右手（ストローク用）。肌の質感は左手と同じ
@@ -142,7 +156,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   const capStr = new THREE.MeshBasicMaterial({color:'#fff7e0', side:THREE.DoubleSide});
 
   // カメラ
-  const camera = new THREE.PerspectiveCamera(26, 16/9, 5, 4000);
+  const camera = new THREE.PerspectiveCamera(26, 16/9, 10, 60000);   // 遠くの水平線まで見える
   const sideCam = new THREE.PerspectiveCamera(20, 4/3, 5, 4000);
   let controls = null, viewName = 'diag', target = new THREE.Vector3(45, 10, -4), mirror = false;
   // カメラの操作：1本指（左ドラッグ）で回す、2本指（右ドラッグ）で平行移動、ピンチ（ホイール）で拡大
@@ -162,9 +176,9 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     if(v.fixed) tgt.set(...v.fixed);
     const narrow = mainCanvas.clientWidth < 640;
     const d = v.dist * (narrow ? 0.92 : 1) * scale;
-    const pol = v.pol*DEG, az = v.az*DEG;
-    cam.up.set(...v.up);
-    cam.position.copy(tgt).add(new THREE.Vector3(Math.sin(pol)*Math.cos(az), Math.sin(pol)*Math.sin(az), Math.cos(pol)).multiplyScalar(d));
+    const el = v.el*DEG, az = v.az*DEG;
+    cam.up.set(...UP);
+    cam.position.copy(tgt).add(new THREE.Vector3(Math.sin(az)*Math.cos(el), -Math.sin(el), Math.cos(az)*Math.cos(el)).multiplyScalar(d));
     cam.lookAt(tgt);
   }
   function setView(name){
@@ -175,7 +189,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     controls = makeControls(camera, target);
   }
   // 2画面表示：右半分にもう1つの向きを同時に出す（右側もドラッグで回せる）
-  const camera2 = new THREE.PerspectiveCamera(26, 1, 5, 4000);
+  const camera2 = new THREE.PerspectiveCamera(26, 1, 10, 60000);
   let view2 = 'front', controls2 = null, splitOn = false;
   const target2 = new THREE.Vector3(45, 10, -4);
   function setView2(name){
@@ -292,7 +306,11 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     const cut = fromHead ? fx - 9 : fx + 9, dir = fromHead ? 1 : -1;
     clipPlane.normal.set(dir,0,0); clipPlane.constant = -dir*cut;
     clipFar.normal.set(-dir,0,0); clipFar.constant = dir*(cut + dir*70);   // 切り口から70mm先までだけ見せる
-    cap.clear();
+    // 断面の形は、切る場所と弦の状態が変わった時だけ作り直す（古い形は捨ててメモリを空ける）
+    const capKey = cut.toFixed(1) + '|' + pose.str.map(i=>i ? i.contact.toFixed(1)+','+i.fret : '-').join(';');
+    if(cap._key !== capKey){
+    cap._key = capKey;
+    cap.children.forEach(m=>m.geometry.dispose()); cap.clear();
     const sh = neckSectionShape(cut);
     const basis = new THREE.Matrix4().makeBasis(new THREE.Vector3(0,1,0), new THREE.Vector3(0,0,1), new THREE.Vector3(1,0,0));
     const mk = (geo, mat, z=0) => { const m = new THREE.Mesh(geo, mat); m.matrixAutoUpdate = false;
@@ -307,6 +325,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
       if(info && cut > Math.min(info.contact, info.fret)-1 && cut < Math.max(info.contact, info.fret)+1) z = 1.25+STRING_R[s];
       const c = new THREE.Mesh(new THREE.CircleGeometry(STRING_R[s]*1.6, 12), capStr);
       c.matrixAutoUpdate = false; c.matrix.copy(basis).setPosition(cut - dir*0.1, strY(s,cut), z); cap.add(c);
+    }
     }
     cap.visible = true;
     const st = new THREE.Vector3(cut, 16, 4);
@@ -330,7 +349,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
 
   setView('diag'); setView2('front');
   return {
-    render, setView, rig, rigR, rightHandPose,
+    render, setView, rig, rigR, rightHandPose, get info(){ return renderer.info; },
     setView2,
     // 処理が重い端末向け：影を切る（いちど切ると戻さない）
     setShadows(on){
