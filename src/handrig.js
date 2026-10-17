@@ -25,6 +25,7 @@ export async function loadHand(skinMaterial){
     if(o.isBone || (o.name && /finger|thumb|wrist/.test(o.name) && !o.isMesh)) bones[o.name] = o;
     if(o.isSkinnedMesh) mesh = o;
   });
+  extendForearm(mesh.geometry, bones['wrist']);
   mesh.geometry = smoothSkinnedGeometry(mesh.geometry, 2);
   mesh.material = skinMaterial;
   mesh.castShadow = true; mesh.receiveShadow = true;
@@ -33,10 +34,13 @@ export async function loadHand(skinMaterial){
   // 基本姿勢での関節位置（手首から見た位置, mm）
   const wrist = bones['wrist'];
   const wq = wrist.quaternion.clone(), wqi = wq.clone().invert(), wp = wrist.position.clone();
-  const rest = {};
+  const rest = {}, restBasis = {};
   for(const name in bones){
     const v = bones[name].position.clone().sub(wp).applyQuaternion(wqi).multiplyScalar(1000);
     rest[name] = [v.x, v.y, v.z];
+    // 基本姿勢での骨の向き（手首から見た X・Y・Z 軸）… ねじれを自然にするのに使う
+    const q = wqi.clone().multiply(bones[name].quaternion);
+    restBasis[name] = [[1,0,0],[0,1,0],[0,0,1]].map(a=>new THREE.Vector3(...a).applyQuaternion(q).toArray());
   }
   const P = n => rest[n];
   const dist = (a,b) => vlen(sub(P(a),P(b)));
@@ -57,7 +61,28 @@ export async function loadHand(skinMaterial){
     m4.makeBasis(vx, vy, vz);
     b.quaternion.setFromRotationMatrix(m4);
   }
-  return { root, mesh, bones, rest, lengths, thumbLengths, setBone };
+  return { root, mesh, bones, rest, restBasis, lengths, thumbLengths, setBone };
+}
+
+/* モデルは手首の先が丸く閉じているので、その部分を引き伸ばして前腕にする。
+   手首の関節から見て（指先が -Z）、z=0〜16mm はほぼ同じ太さの筒、16〜24mm が丸いふた（実測） */
+function extendForearm(geo, wrist){
+  const P = geo.attributes.position;
+  const qi = wrist.quaternion.clone().invert(), q = wrist.quaternion.clone(), wp = wrist.position.clone();
+  const v = new THREE.Vector3();
+  const Z0 = 0.008, Z1 = 0.016, LEN = 0.42;          // メートル
+  for(let i=0;i<P.count;i++){
+    v.fromBufferAttribute(P, i).sub(wp).applyQuaternion(qi);
+    if(v.z <= Z0) continue;
+    let z, t;
+    if(v.z < Z1){ t = (v.z-Z0)/(Z1-Z0); z = Z0 + t*LEN; }
+    else { t = 1; z = Z0 + LEN + (v.z-Z1)*2.5; }
+    const grow = 1 + 0.22*Math.pow(t,0.8);              // 肘に向かって少し太く
+    v.set(v.x*grow, (v.y+2e-3)*grow-2e-3, z);
+    v.applyQuaternion(q).add(wp);
+    P.setXYZ(i, v.x, v.y, v.z);
+  }
+  P.needsUpdate = true;
 }
 
 // ポーズ（関節の位置と向き）をモデルに反映

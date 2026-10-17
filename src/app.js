@@ -2,7 +2,8 @@
    ウクレレ・ハンドガイド（画面の操作・音・説明）
    ========================================================= */
 import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, PROGRESSIONS } from './data.js';
-import { computePose, blendPose } from './pose.js';
+import { computePose, blendPose, HAND_CFG } from './pose.js';
+window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, focus:0, vib:[0,0,0,0]};

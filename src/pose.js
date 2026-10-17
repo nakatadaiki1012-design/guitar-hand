@@ -16,9 +16,16 @@ const PAD_EXT = 8.5, PAD_R = 4.8;
 
 /* 手の向き：手首はネックの下（床側）かつ体の側。
    指の付け根はネックの床側の縁の外にあり、指はそこから立ち上がって手のひら側へ丸まる */
+// 手の置き方（調整用にまとめておく）
+export const HAND_CFG = {
+  F: [-0.10,-0.93,0.35],  N: [0,-0.35,-0.93],      // ふつうのコード：手の甲は客席側、手首はネックの真下
+  Fb:[-0.10,-0.85,0.50],  Nb:[0,-0.50,-0.85],      // セーハ：少し手前に倒す
+  yK: 40, zK: -4, yKb: 48, zKb: -6,                // 人差し指の付け根の位置
+};
 function handFrame(barre){
-  const F = norm(barre ? [-0.10,-0.80,0.59] : [-0.12,-0.70,0.70]);   // 手首→指の付け根
-  let N = barre ? [0,-0.59,-0.80] : [0,-0.70,-0.70];
+  const C = HAND_CFG;
+  const F = norm(barre ? C.Fb : C.F);                                    // 手首→指の付け根
+  let N = barre ? C.Nb : C.N;
   N = norm(sub(N, mul(F, dot(N,F))));                                   // 手のひらの向き（ネック側）
   const U = mul(N,-1);                                                  // 手の甲の向き
   // 手首の関節の座標軸（WebXR：-Zが指先、+Yが手の甲）
@@ -122,7 +129,7 @@ export function computePose(chord, rig){
   for(const f in tipX){ anc += tipX[f] - kRest(+f)[0]; cnt++; }
   anc = cnt ? anc/cnt : fretX(1)-2;
   anc = Math.max(4, anc);
-  const yK = fullBarre ? 52 : 44, zK = fullBarre ? -14 : -22;
+  const yK = fullBarre ? HAND_CFG.yKb : HAND_CFG.yK, zK = fullBarre ? HAND_CFG.zKb : HAND_CFG.zK;
   // 手首の位置：人差し指の付け根が [anc, yK, zK] に来るように
   const kIdx = toWorld(H, [0,0,0], rig.rest[jointName(1,1)]);
   const W = sub([anc, yK, zK], kIdx);
@@ -158,7 +165,9 @@ export function computePose(chord, rig){
   const dT = norm([-0.2,-0.9,0.3]);
   const T2 = sub(Tpad, mul(dT, TL[2]+7));
   const Tc = add(T2, mul(dT, TL[2]));
-  const T1 = ik3(T0, T2, TL[0], TL[1], add(mul(add(T0,T2),0.5), [-25,0,-35]));
+  // 親指の付け根の関節は、モデルの基本姿勢に近い側へ曲げる（手のひらの皮膚がよじれないように）
+  const T1rest = toWorld(H, W, rig.rest[THUMB_JOINTS[1]]);
+  const T1 = ik3(T0, T2, TL[0], TL[1], add(T1rest, [0,0,-10]));
   const thumb = [T0, T1, T2, Tc];
 
   // 関節ごとの位置と向き
@@ -166,18 +175,26 @@ export function computePose(chord, rig){
   const J = (name, pos, fwd, dorsal, f=0, i=0) => joints.push({name, pos, fwd:norm(fwd), dorsal:norm(dorsal), f, i});
   J('wrist', W, H.F, H.U);
   for(let f=1; f<=4; f++){
-    J(jointName(f,0), M[f], sub(K[f],M[f]), H.U, f, 0);
+    { const Bm = rig.restBasis[jointName(f,0)]; J(jointName(f,0), M[f], sub(K[f],M[f]), add(add(mul(H.X,Bm[1][0]), mul(H.Y,Bm[1][1])), mul(H.Z,Bm[1][2])), f, 0); }
     const {pts, axis} = fingers[f];
     for(let i=0;i<4;i++){
       const fwd = norm(sub(pts[Math.min(i+1,3)], pts[Math.min(i,2)]));
       J(jointName(f,i+1), pts[i], fwd, cross(fwd, axis), f, i+1);
     }
   }
-  const neckAway = p => { const v = sub(p, [p[0], 0, -12]); return v; };
+  // 親指のねじれ：モデルの基本姿勢での向きを引き継ぎながら、各関節を次の関節へ向ける
+  const mulMV = (M, v) => add(add(mul(M[0],v[0]), mul(M[1],v[1])), mul(M[2],v[2]));
+  const tmul = (M, v) => [dot(M[0],v), dot(M[1],v), dot(M[2],v)];
+  const frameFrom = (fwd, dorsal) => { const Z = norm(mul(fwd,-1)); const Y = norm(sub(dorsal, mul(Z, dot(dorsal,Z)))); return [cross(Y,Z), Y, Z]; };
+  const Rw = [H.X, H.Y, H.Z];
+  let Rprev = Rw, Bprev = [[1,0,0],[0,1,0],[0,0,1]];
   for(let i=0;i<4;i++){
+    const Bi = rig.restBasis[THUMB_JOINTS[i]];
     const fwd = norm(sub(thumb[Math.min(i+1,3)], thumb[Math.min(i,2)]));
-    const away = neckAway(thumb[i]);
-    J(THUMB_JOINTS[i], thumb[i], fwd, i===0 ? add(mul(H.U,1), mul(norm(away),0.5)) : away, 5, i);
+    const pred = mulMV(Rprev, tmul(Bprev, Bi[1]));
+    const R = frameFrom(fwd, pred);
+    J(THUMB_JOINTS[i], thumb[i], fwd, R[1], 5, i);
+    Rprev = R; Bprev = Bi;
   }
 
   // 弦：押さえたところで指板側へ沈む

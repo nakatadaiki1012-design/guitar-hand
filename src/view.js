@@ -66,23 +66,6 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   };
   const rig = await loadHand(skin);
   scene.add(rig.root);
-  // 前腕（モデルは手首までなので、腕をつなげる）：手首は幅約58mm・厚み約40mmの楕円
-  const armGeo = new THREE.CylinderGeometry(1, 1.18, 1, 40, 8, true);
-  armGeo.translate(0, -0.5, 0);                       // 上端が手首、下に伸びる
-  const arm = new THREE.Mesh(armGeo, skin); arm.castShadow = true; arm.receiveShadow = true;
-  scene.add(arm);
-  function placeArm(pose){
-    const w = pose.joints.find(j=>j.name==='wrist');
-    const F = new THREE.Vector3(...w.fwd), U = new THREE.Vector3(...w.dorsal);
-    const dir = F.clone().multiplyScalar(-1).add(new THREE.Vector3(0.28,0.12,0)).normalize();   // 肘は体の側・床側
-    const top = new THREE.Vector3(...w.pos).addScaledVector(F, 14).addScaledVector(U, 3);
-    const Yax = dir.clone().multiplyScalar(-1);       // 円柱の+Yを手首側へ
-    const Zax = U.clone().sub(Yax.clone().multiplyScalar(U.dot(Yax))).normalize();
-    const Xax = new THREE.Vector3().crossVectors(Yax, Zax);
-    arm.matrixAutoUpdate = false;
-    arm.matrix.makeBasis(Xax.multiplyScalar(29), Yax.multiplyScalar(260), Zax.multiplyScalar(20)).setPosition(top);
-  }
-
   // 輪切りの断面
   const cap = new THREE.Group(); cap.visible = false; scene.add(cap);
   const capNeck = new THREE.MeshStandardMaterial({color:'#a8713f', roughness:0.7, side:THREE.DoubleSide});
@@ -126,7 +109,6 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
 
   function render(pose, opts){
     applyPose(rig, pose);
-    placeArm(pose);
     uke.setStrings(pose.str);
     // コードが変わったら見る中心も少しずらす（カメラごと平行移動）
     const nt = new THREE.Vector3(...pose.target);
