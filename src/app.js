@@ -218,9 +218,7 @@ function toggleBtn(id, key){
 toggleBtn('btnBadges','badges');
 toggleBtn('btnGhost','ghost');
 // 右手の表示：いつも／演奏中だけ／なし
-segment('rmodeSeg', v=>{ state.rightMode = v; });
 // 速さ（スロー再生）：テンポに掛け算する。演奏中に変えても途切れないようにつなぐ
-segment('speedSeg', v=>{ state.speed = +v; retime(prog, +bpmEl.value); retime(song, +songBpm.value); });
 toggleBtn('btnMirror','mirror');
 // ボタンの切り替え（ひとつだけ選べるグループ）
 function segment(id, fn){
@@ -230,17 +228,44 @@ function segment(id, fn){
     fn(b.dataset.v); kick();
   });
 }
-let viewNameNow = 'diag';
-segment('viewSeg', v=>{ viewNameNow = v; if(view) view.setView(v); });
-segment('view2Seg', v=>{ if(view) view.setView2(v); });
+// アングル：押すたびに次の向きへ
+const ANGLES = ['diag','self','front','side','right','both'];
+let angle1 = 'diag', angle2 = 'front';
+const nextAngle = a => ANGLES[(ANGLES.indexOf(a)+1) % ANGLES.length];
+document.getElementById('angleBtn').onclick = e=>{
+  angle1 = nextAngle(angle1); e.currentTarget.textContent = '🎥 ' + VIEWS[angle1].label;
+  if(view) view.setView(angle1); kick();
+};
+document.getElementById('angle2Btn').onclick = e=>{
+  angle2 = nextAngle(angle2); e.currentTarget.textContent = '🎥 ' + VIEWS[angle2].label;
+  if(view) view.setView2(angle2); kick();
+};
+// 右手：押すたびに 表示 → 演奏中だけ → 表示しない
+const RMODES = [['always','表示'],['playing','演奏中だけ'],['off','なし']];
+document.getElementById('rightBtn').onclick = e=>{
+  const i = (RMODES.findIndex(m=>m[0]===state.rightMode)+1) % RMODES.length;
+  state.rightMode = RMODES[i][0];
+  e.currentTarget.textContent = '✋ 右手：' + RMODES[i][1];
+  e.currentTarget.classList.toggle('on', state.rightMode !== 'off');
+  kick();
+};
 document.getElementById('btnSplit').onclick = e=>{
   state.split = !state.split;
   e.currentTarget.classList.toggle('on', state.split);
-  document.getElementById('view2Seg').hidden = !state.split;
+  document.getElementById('angle2Btn').hidden = !state.split;
   document.getElementById('handView').classList.toggle('split', state.split);
   document.getElementById('mainWrap').classList.toggle('split', state.split);
+  if(view) view.setSplit(state.split);
   kick();
 };
+// 速さ（練習・曲デモ）：押すたびに ×1 → ×¾ → ×½ → ×¼
+const SPEEDS = [[1,'×1'],[0.75,'×¾'],[0.5,'×½'],[0.25,'×¼']];
+document.querySelectorAll('.speedBtn').forEach(b=>b.onclick = ()=>{
+  const i = (SPEEDS.findIndex(x=>x[0]===state.speed)+1) % SPEEDS.length;
+  state.speed = SPEEDS[i][0];
+  document.querySelectorAll('.speedBtn').forEach(x=>{ x.textContent = '速さ ' + SPEEDS[i][1]; x.classList.toggle('on', state.speed !== 1); });
+  retime(prog, +bpmEl.value); retime(song, +songBpm.value);
+});
 document.querySelectorAll('.swingBtn').forEach(b=>b.onclick = ()=>{
   state.swing = !state.swing;
   document.querySelectorAll('.swingBtn').forEach(x=>x.classList.toggle('on', state.swing));

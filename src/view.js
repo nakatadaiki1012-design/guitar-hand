@@ -142,36 +142,59 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   const camera = new THREE.PerspectiveCamera(26, 16/9, 5, 4000);
   const sideCam = new THREE.PerspectiveCamera(20, 4/3, 5, 4000);
   let controls = null, viewName = 'diag', target = new THREE.Vector3(45, 10, -4), mirror = false;
+  // カメラの操作：1本指（左ドラッグ）で回す、2本指（右ドラッグ）で平行移動、ピンチ（ホイール）で拡大
+  function makeControls(cam, tgt){
+    const c = new OrbitControls(cam, mainCanvas);
+    c.target.copy(tgt);
+    c.enablePan = true; c.screenSpacePanning = true; c.panSpeed = 0.8;
+    c.minDistance = 120; c.maxDistance = 900;
+    c.rotateSpeed = 0.7; c.zoomSpeed = 0.8;
+    c.touches = {ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN};
+    c.addEventListener('change', ()=>requestRender && requestRender());
+    c.update();
+    return c;
+  }
+  function placeCam(cam, tgt, name, scale=1){
+    const v = VIEWS[name];
+    if(v.fixed) tgt.set(...v.fixed);
+    const narrow = mainCanvas.clientWidth < 640;
+    const d = v.dist * (narrow ? 0.92 : 1) * scale;
+    const pol = v.pol*DEG, az = v.az*DEG;
+    cam.up.set(...v.up);
+    cam.position.copy(tgt).add(new THREE.Vector3(Math.sin(pol)*Math.cos(az), Math.sin(pol)*Math.sin(az), Math.cos(pol)).multiplyScalar(d));
+    cam.lookAt(tgt);
+  }
   function setView(name){
     viewName = name;
-    const v = VIEWS[name];
-    if(v.fixed) target.set(...v.fixed);
-    const narrow = mainCanvas.clientWidth < 640;
-    const d = v.dist * (narrow ? 0.92 : 1);
-    const pol = v.pol*DEG, az = v.az*DEG;
-    camera.up.set(...v.up);
-    camera.position.copy(target).add(new THREE.Vector3(Math.sin(pol)*Math.cos(az), Math.sin(pol)*Math.sin(az), Math.cos(pol)).multiplyScalar(d));
-    camera.lookAt(target);
+    if(lastT && !VIEWS[name].fixed) target.copy(lastT);
+    placeCam(camera, target, name);
     if(controls) controls.dispose();
-    controls = new OrbitControls(camera, mainCanvas);
-    controls.target.copy(target);
-    controls.enablePan = false; controls.minDistance = 140; controls.maxDistance = 800;
-    controls.rotateSpeed = 0.7; controls.zoomSpeed = 0.8;
-    controls.addEventListener('change', ()=>requestRender && requestRender());
-    controls.update();
+    controls = makeControls(camera, target);
   }
-  // 2画面表示：右半分にもう1つの向きを同時に出す（右側は向きのボタンで選ぶ。ドラッグで回せるのは左側）
+  // 2画面表示：右半分にもう1つの向きを同時に出す（右側もドラッグで回せる）
   const camera2 = new THREE.PerspectiveCamera(26, 1, 5, 4000);
-  let view2 = 'front';
-  const target2 = new THREE.Vector3();
-  function placeCam2(t){
-    const v = VIEWS[view2];
-    target2.copy(v.fixed ? new THREE.Vector3(...v.fixed) : t);
-    const pol = v.pol*DEG, az = v.az*DEG, d = v.dist*0.9;
-    camera2.up.set(...v.up);
-    camera2.position.copy(target2).add(new THREE.Vector3(Math.sin(pol)*Math.cos(az), Math.sin(pol)*Math.sin(az), Math.cos(pol)).multiplyScalar(d));
-    camera2.lookAt(target2);
+  let view2 = 'front', controls2 = null, splitOn = false;
+  const target2 = new THREE.Vector3(45, 10, -4);
+  function setView2(name){
+    view2 = name;
+    if(!VIEWS[name].fixed) target2.copy(lastT || target);
+    placeCam(camera2, target2, name, 0.9);
+    if(controls2) controls2.dispose();
+    controls2 = makeControls(camera2, target2);
+    controls2.enabled = false;
   }
+  // どちらの画面を触ったかで、動かすカメラを切り替える（OrbitControls より先に判定）
+  let activePtr = 0, lastT = null;
+  const pickSide = e => {
+    const r = mainCanvas.getBoundingClientRect();
+    let x = e.clientX - r.left; if(mainCanvas.style.transform) x = r.width - x;
+    const right = splitOn && x > r.width/2;
+    controls.enabled = !right; if(controls2) controls2.enabled = right;
+  };
+  mainCanvas.parentElement.addEventListener('pointerdown', e=>{ if(activePtr++ === 0) pickSide(e); }, true);
+  window.addEventListener('pointerup', ()=>{ activePtr = Math.max(0, activePtr-1); }, true);
+  window.addEventListener('pointercancel', ()=>{ activePtr = Math.max(0, activePtr-1); }, true);
+  mainCanvas.parentElement.addEventListener('wheel', e=>{ if(activePtr === 0) pickSide(e); }, true);
   let requestRender = null;
   // タップ（ドラッグしなかった時）で音を鳴らす
   let down = null;
@@ -201,9 +224,11 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     if(opts.right){ const rp = rightHandPose(rigR, opts.right); window.__rp = rp; applyPose(rigR, rp); }
     // コードが変わったら見る中心も少しずらす（カメラごと平行移動）。全体・右手の表示では動かさない
     const nt = new THREE.Vector3(...pose.target);
-    if(!VIEWS[viewName].fixed && nt.distanceTo(target) > 0.01){
-      const delta = nt.clone().sub(target);
-      target.copy(nt); controls.target.add(delta); camera.position.add(delta); controls.update();
+    if(!lastT) lastT = nt.clone();
+    if(nt.distanceTo(lastT) > 0.01){
+      const delta = nt.clone().sub(lastT); lastT.copy(nt);
+      if(!VIEWS[viewName].fixed){ controls.target.add(delta); camera.position.add(delta); controls.update(); }
+      if(controls2 && !VIEWS[view2].fixed){ controls2.target.add(delta); camera2.position.add(delta); controls2.update(); }
     }
     // ---- メイン ----
     clipPlane.constant = 1e5; clipFar.constant = 1e5; cap.visible = false;
@@ -215,7 +240,6 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
       W = Math.floor(Wc/2);
       camera.aspect = W/H; camera.updateProjectionMatrix();
       camera2.aspect = (Wc-W)/H; camera2.updateProjectionMatrix();
-      placeCam2(new THREE.Vector3(...pose.target));
       renderer.setScissorTest(true);
       renderer.setViewport(0, 0, W, H); renderer.setScissor(0, 0, W, H);
       renderer.render(scene, camera);
@@ -301,10 +325,11 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
     sideOverlay.innerHTML = sh2;
   }
 
-  setView('diag');
+  setView('diag'); setView2('front');
   return {
     render, setView, rig, rigR, rightHandPose,
-    setView2(name){ view2 = name; },
+    setView2, get cams(){ return [camera.position.toArray(), camera2.position.toArray(), controls.target.toArray()]; },
+    setSplit(on){ splitOn = on; if(!on){ controls.enabled = true; if(controls2) controls2.enabled = false; } },
     debugCam(pos, look){ camera.position.set(...pos); controls.target.set(...look); controls.update(); },
     onChange(fn){ requestRender = fn; },
     get viewName(){ return viewName; }
