@@ -265,7 +265,8 @@ function optimizeHand(chord, rig){
     {...base, roll:15, zK:-22, yK:40},
   ];
   let best = null;
-  for(const st of starts){
+  // メロディ（1音ずつ）は形が単純なので、出発点を減らして早く計算する
+  for(const st of chord.melody ? starts.slice(0,3) : starts){
     const r = localSearch(chord, rig, {...st}, pressing, [1, 0.5]);
     if(!best || r.cost < best.cost) best = r;
   }
@@ -308,7 +309,7 @@ export function computePose(chord, rig){
   const xs = Object.values(tipX);
   const center = xs.length ? (Math.min(...xs)+Math.max(...xs))/2 : fretX(1.5);
   window.__thumbInfo = {ang: th.ang, cost: th.cost, total: hb.cost, prm: hb.prm, parts: hb.parts, ms: performance.now()-t0};
-  return {joints, fingers, str, chord, target:[Math.min(Math.max(center,40),fretX(9)), 10, -4]};
+  return {joints, fingers, str, chord, target:[Math.min(Math.max(center,40),fretX(13)), 10, -4]};
 }
 
 /* ---------- コードチェンジのアニメーション ---------- */

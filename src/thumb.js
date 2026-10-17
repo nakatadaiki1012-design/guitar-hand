@@ -99,6 +99,7 @@ export function solveThumb(M, toW, toWd, opts){
       // 2b) 親指の先がネックの上の縁（1弦Gの側）からのぞく
       const over = W[3][1] + halfW(W[3][0]) + opts.peek;        // 縁より peek mm 上に出ればゼロ
       if(over > 0) c += over*over*0.3;
+      if(over < -5) c += (over+5)*(over+5)*0.3;                  // のぞかせすぎない（ギターのネックは太いので、親指が上に出すぎやすい）
       const back = (opts.peekZ ?? -12) - W[3][2];                                 // 先はネックの裏ではなく、横の高さまで回り込む
       if(back > 0) c += back*back*0.15;
     }

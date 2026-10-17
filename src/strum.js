@@ -1,10 +1,10 @@
 /* =========================================================
    右手のストローク
-   ・手の形：ピックを軽く持つような形。人差し指は軽く曲げるだけ（伸ばし気味）で、爪の背中側で弦をこする。中指〜小指はその後ろに軽く握り込む。
-             親指の腹は人差し指の第一関節の横にそっと当てる
+   ・手の形：ピックを持つ。人差し指を軽く曲げ、その第一関節の横と親指の腹でピックをはさむ。中指〜小指はその後ろに軽く握り込む。
+             ピックの先（とがった所）が指から7mmほど出て、そこで弦を弾く
    ・腕の向き：前腕はギターの尾側（ボディのおしり側）から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横で約90°）
    ・動き　：腕は止めたまま、手の甲を軸にして指先側を回して弾く（手の甲はあまり動かない）
-             ダウン（4弦→1弦）は人差し指の爪、アップ（1弦→4弦）は指の腹で弦をこする
+             ダウン（6弦→1弦）もアップ（1弦→6弦）も、ピックの先で弦を弾く
    ・弾かない拍（空ピッキング）でも手は止めず、弦から少し浮かせて振り続ける
    ========================================================= */
 import { strY, stringZ, STRUM_X, add, sub, mul, dot, cross, norm, vlen, DEG } from './geom.js';
@@ -12,7 +12,8 @@ import { jointName, THUMB_JOINTS } from './handrig.js';
 import { makeThumbModel, solveThumbTo } from './thumb.js';
 
 export { STRUM_X };                          // 弾く場所（geom.js：アコギはサウンドホールの上、エレキはピックアップの間）
-export const STRUM_AMP = 0.30;               // 振りの大きさ（ラジアン）
+export const PICK_TIP = 14;                  // ピックの中心から先までの長さ（mm）
+export const STRUM_AMP = 0.42;               // 振りの大きさ（ラジアン）：6本の弦を越えるくらい
 
 const CFG = {
   wristFlex: 32,                             // 手首は手のひら側へ軽く曲げるだけ（横には曲げない）
@@ -67,21 +68,24 @@ function localHand(rig, flick=0){
     const mv = v => [dot(R[0],v), dot(R[1],v), dot(R[2],v)];
     J.push({name: THUMB_JOINTS[i], pos: th.pts[i], fwd: mv(mul(B[2],-1)), dorsal: mv(B[1])});
   }
-  // 人差し指の爪のあたり（弦に当たる点）
-  // 弦に当たるのは、丸めた人差し指の第一関節〜爪の背中側
+  // ピック：親指の腹と、人差し指の第一関節の横ではさむ。面は親指の方を向き、先は手のひら側（弦の方）へ出る
   const iDj = J.find(j=>j.name===jointName(1,3)), iTj = J.find(j=>j.name===jointName(1,4));
-  const hit = add(mul(add(iDj.pos, iTj.pos), 0.5), mul(norm(iDj.dorsal), 7));
+  const pickN = radial;
+  const pd = add(norm(sub(iTj.pos, iDj.pos)), mul(palm, 1.2));
+  const pickX = norm(sub(pd, mul(pickN, dot(pd, pickN))));
+  const pickC = add(add(mul(add(iP, iD), 0.5), mul(radial, 7.6)), mul(pickX, 4));
+  const hit = add(pickC, mul(pickX, PICK_TIP));
   // 手の甲のまん中（中指の骨のまん中あたりの、甲の表面）… ここを軸にして指先側を回す
   const m0 = rig.rest[jointName(2,0)], m1 = rig.rest[jointName(2,1)];
   const back = add(mul(add(m0, m1), 0.5), mul(palm, -CFG.backDepth));
-  const res = {J, hit, back};
+  const res = {J, hit, back, pick:{c: pickC, x: pickX, n: pickN}};
   rig._strumCache.set(flick, res);
   return res;
 }
 
 /* st = {theta: 振りの角度（＋がダウン方向）, lift: 弦から浮かせる量 mm} */
 export function rightHandPose(rig, st){
-  const {J, hit, back} = localHand(rig, st.flick || 0);
+  const {J, hit, back, pick} = localHand(rig, st.flick || 0);
   // 手の向きは前腕の向きから決める：前腕の延長線から、手のひら側へ wristFlex 度だけ曲げる
   const fa0 = mul(norm(CFG.elbow), -1);                         // ひじ→手首
   const P0 = norm(sub(CFG.palm, mul(fa0, dot(CFG.palm, fa0))));  // 前腕に直交する「手のひら側」
@@ -130,7 +134,8 @@ export function rightHandPose(rig, st){
   const Ur = dirArm(R3(F, rollA*0.8, U));                                // 前腕の回転（回内・回外）なので前腕もひねる
   out.push({name:'forearm', pos: Wp, fwd: fa, dorsal: sub(Ur, mul(fa, dot(Ur,fa)))});
   for(const j of J) out.push({name: j.name, pos: place(add(W, toWb(j.pos))), fwd: norm(dir(toWb(j.fwd))), dorsal: norm(dir(toWb(j.dorsal)))});
-  return {joints: out, tip: place(add(W, toWb(hit)))};
+  const pk = {pos: place(add(W, toWb(pick.c))), x: norm(dir(toWb(pick.x))), n: norm(dir(toWb(pick.n)))};
+  return {joints: out, tip: place(add(W, toWb(hit))), pick: pk};
 }
 
 /* ---------- ストロークのパターン（8分音符8つで1小節） ---------- */

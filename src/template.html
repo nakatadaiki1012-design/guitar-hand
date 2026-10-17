@@ -199,7 +199,30 @@
   .song-sheet .bar span+span{color:var(--sub)}
   .song-sheet .bar.now{background:var(--on);color:#fff;border-color:var(--on)}
   .song-sheet .bar.now span+span{color:#d6f3f1}
-  #songList{display:flex;gap:4px;flex-wrap:wrap}
+  #songList,#tabList{display:flex;gap:4px;flex-wrap:wrap}
+  .tabsheet{overflow-x:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:2px 0;-webkit-overflow-scrolling:touch}
+  .tabsheet svg{display:block;width:auto;max-width:none}
+  .tabsheet .tl{stroke:#9aa7ab;stroke-width:1}
+  .tabsheet .tb{stroke:#55666e;stroke-width:1.4}
+  .tabsheet .tn{font-size:10px;fill:#8a989e;text-anchor:middle;font-weight:700}
+  .tabsheet .tf{font-size:10px;font-weight:800;fill:#1d2a30;text-anchor:middle;pointer-events:none}
+  .tabsheet .ev{cursor:pointer}
+  .tabsheet .ev .hl{fill:transparent}
+  .tabsheet .ev:hover .hl{fill:#0e9f9a22}
+  .tabsheet .ev.now .hl{fill:#0e9f9a55}
+  .import{margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:6px 10px;background:var(--panel2)}
+  .import summary{cursor:pointer;font-weight:700;font-size:14px}
+  .import textarea{width:100%;font:12px/1.35 ui-monospace,Menlo,Consolas,monospace;border:1px solid var(--line);border-radius:8px;padding:6px;margin-top:6px;background:#fff;color:var(--text);resize:vertical}
+  .imp-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+  .imp-row small{font-size:11px;color:var(--dim)}
+  .imp-row input[type=text]{flex:1;min-width:0;font:inherit;font-size:14px;padding:5px 9px;border:1px solid var(--line);border-radius:9px;background:#fff}
+  .filebtn{position:relative;overflow:hidden;display:inline-block;cursor:pointer;border:1px solid var(--line);border-radius:9px;background:#fff}
+  .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .msg{font-size:12px;color:var(--sub);margin:6px 0 2px}
+  .msg.ok{color:var(--accent)} .msg.bad{color:var(--accent2)}
+  .chordCard .tabnow{background:#faf8f3;border-radius:10px;padding:6px 9px;font-size:12px;line-height:1.45;color:#1b1410;max-width:170px}
+  .chordCard .tabnow b{display:block;font-size:11px;color:#0e9f9a}
+  .chordCard .tabnow.next{opacity:.8}
   footer{max-width:1400px;margin:0 auto;padding:0 16px 20px;color:var(--dim);font-size:11px}
 </style>
 </head>
@@ -255,6 +278,7 @@
       <nav class="tabs">
         <button data-tab="practice" class="on">練習</button>
         <button data-tab="songs">曲デモ</button>
+        <button data-tab="tabs">タブ譜</button>
       </nav>
 
       <div class="tab on" id="tab-practice">
@@ -286,7 +310,36 @@
           <button class="chip speedBtn" title="押すたびに ×1 → ×¾ → ×½ → ×¼（スロー再生）">速さ ×1</button>
           <span class="tempo">テンポ <input type="range" id="songBpm" min="50" max="140" value="100"> <span id="songBpmVal">100</span></span>
         </div>
-        <p class="cap">1小節カウントしてから始まります。アングルを「両手」にすると両手の動きが見やすくなります。Slow & Easy はコード進行と伴奏だけ（メロディは著作権があるので入れていません）。ほかの曲は著作権の切れた曲です。</p>
+        <p class="cap">1小節カウントしてから始まります。アングルを「全体」にすると両手の動きが見やすくなります。Slow & Easy はコード進行と伴奏だけ（メロディは著作権があるので入れていません）。ほかの曲は著作権の切れた曲です。</p>
+      </div>
+
+      <div class="tab" id="tab-tabs">
+        <div id="tabList"></div>
+        <div class="song-info" id="tabInfo"></div>
+        <div class="tabsheet" id="tabSheet"></div>
+        <div class="runbar">
+          <button class="play big" id="btnTab">▶ 弾いてみせる</button>
+          <button class="chip speedBtn" title="押すたびに ×1 → ×¾ → ×½ → ×¼（スロー再生）">速さ ×1</button>
+          <span class="tempo">テンポ <input type="range" id="tabBpm" min="40" max="160" value="90"> <span id="tabBpmVal">90</span></span>
+          <button class="chip" id="btnTabDel" hidden title="取り込んだこの曲を消す">🗑 消す</button>
+        </div>
+        <p class="cap">数字＝押さえるフレット（0＝開放弦）、丸の色＝押さえる指。左手はその弦・フレットを押さえ、右手はピックでその弦だけを弾きます（表拍はダウン、裏拍はアップ）。開放弦は緑に光ります。止まっている時は数字を押すと、その音の押さえ方が見られます。</p>
+        <details class="import">
+          <summary>📥 タブ譜・楽譜を取り込む</summary>
+          <div class="imp-row">
+            <label class="chip filebtn">ファイルを選ぶ<input type="file" id="tabFile" accept=".mid,.midi,.xml,.musicxml,.mxl,.txt,.tab"></label>
+            <small>MIDI（.mid）・MusicXML（.musicxml / .xml / .mxl）・文字のタブ譜（.txt）</small>
+          </div>
+          <textarea id="tabPaste" rows="7" spellcheck="false" placeholder="ここに文字のタブ譜を貼り付け（6行ひとまとまり・上が1弦）
+e|-------0---------|
+B|-----1---1-------|
+G|---0-------0-----|
+D|-2---------------|
+A|-----------------|
+E|-----------------|"></textarea>
+          <div class="imp-row"><input type="text" id="tabPasteName" placeholder="曲名（なくてもOK）"><button class="chip" id="tabPasteGo">このタブ譜を読み込む</button></div>
+          <p class="msg" id="tabMsg">Guitar Pro・MuseScore などの楽譜ソフトの曲は「MusicXML」か「MIDI」で書き出すと取り込めます。MusicXML にタブ譜（弦とフレット）が入っていればそのとおりに、なければ弾きやすい弦とフレットを自動で決めます。取り込んだ曲はこの端末に残ります。</p>
+        </details>
       </div>
     </section>
   </div>

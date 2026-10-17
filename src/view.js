@@ -7,7 +7,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { buildGuitar } from './guitar.js';
 import { createBackdrop } from './backdrop.js';
 import { loadHand, applyPose } from './handrig.js';
-import { rightHandPose } from './strum.js';
+import { rightHandPose, PICK_TIP } from './strum.js';
 import { slotCenter, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG, NSTR, STRUM_X, GTYPE, setGuitarType } from './geom.js';
 import { STRING_NAMES, FINGER_COLORS } from './data.js';
 
@@ -119,23 +119,33 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
 
   // 押さえる場所の印（指の色の丸）と、弦に当たっているところの光る輪
   const marks = new THREE.Group(); scene.add(marks);
-  const markMats = FINGER_COLORS.map(c => c ? new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:0.9, depthWrite:false}) : null);
-  const ringMats = FINGER_COLORS.map(c => c ? new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:1, depthTest:false}) : null);
+  // 印の色は指の色をもっと濃く・あざやかにしたもの（明るい背景の上でもはっきり見えるように、色の補正もかけない）
+  const MARK_COLORS = ['', '#ec1c2b', '#ff8400', '#0b8be6', '#7b32f0'];
+  const markMats = MARK_COLORS.map(c => c ? new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:1, depthWrite:false, toneMapped:false}) : null);
+  const ringMats = MARK_COLORS.map(c => c ? new THREE.MeshBasicMaterial({color:c, transparent:true, opacity:1, depthTest:false, toneMapped:false}) : null);
   const glowTex = (()=>{ const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
-    const gr = g.createRadialGradient(32,32,0,32,32,32); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(.35,'rgba(255,255,255,.6)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+    const gr = g.createRadialGradient(32,32,0,32,32,32); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(.5,'rgba(255,255,255,.85)'); gr.addColorStop(1,'rgba(255,255,255,0)');
     g.fillStyle = gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c); })();
   // 弦6本ぶんの印は最初に1回だけ作っておき、毎回は位置と色を変えるだけ（毎フレーム作り直すと重い）
-  const discGeo = new THREE.CircleGeometry(4.6, 32), ringGeo = new THREE.TorusGeometry(2.2, 0.45, 8, 28);
+  const discGeo = new THREE.CircleGeometry(4.6, 32), ringGeo = new THREE.TorusGeometry(2.2, 0.6, 8, 28);
   const markSet = Array.from({length:NSTR}, ()=>{
     const disc = new THREE.Mesh(discGeo, markMats[1]); disc.renderOrder = 3;
     // 弦が指に当たって沈んでいるところ：光る輪（手を透かして見えるように、いちばん手前に描く）
     const ring = new THREE.Mesh(ringGeo, ringMats[1]); ring.rotation.y = Math.PI/2; ring.renderOrder = 10;
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, transparent:true, depthTest:false, depthWrite:false, opacity:0.9}));
+    const glow = new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex, transparent:true, depthTest:false, depthWrite:false, opacity:0.95, toneMapped:false}));
     glow.scale.set(13,13,1); glow.renderOrder = 9;
     marks.add(disc, ring, glow);
     return {disc, ring, glow};
   });
+  // 開放弦を弾く時の印（ナットのすぐ先の弦の上に、緑の光）
+  const openMat = new THREE.SpriteMaterial({map:glowTex, transparent:true, depthTest:false, depthWrite:false, opacity:0.95, toneMapped:false, color:'#14c35a'});
+  const openSet = Array.from({length:NSTR}, ()=>{ const sp = new THREE.Sprite(openMat); sp.scale.set(11,11,1); sp.renderOrder = 9; sp.visible = false; marks.add(sp); return sp; });
   function placeMarks(pose, ghost){
+    for(let s=0;s<NSTR;s++){
+      const on = !!(pose.openStr && pose.openStr.includes(s));
+      openSet[s].visible = on;
+      if(on) openSet[s].position.set(9, strY(s, 9), stringZ(9) + 1);
+    }
     const chord = pose.chord;
     for(let s=0;s<NSTR;s++){
       const m = markSet[s], info = pose.str[s];
@@ -143,7 +153,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
       if(!info) continue;
       const f = chord.fingers[s] || 1;
       const x = info.contact, y = strY(s, x);
-      m.disc.material = markMats[f]; m.ring.material = ringMats[f]; m.glow.material.color.set(FINGER_COLORS[f]);
+      m.disc.material = markMats[f]; m.ring.material = ringMats[f]; m.glow.material.color.set(MARK_COLORS[f]);
       m.disc.position.set(x, y, 0.08);
       m.ring.position.set(x, y, FRET_TOP + STRING_R[s] + 0.2);
       m.glow.position.set(x, y, FRET_TOP + 1.2);
@@ -155,6 +165,15 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   const rigR = await loadHand(skinR, 'right');
   addArmFade(skinR, rigR); skinR.transparent = true;
   scene.add(rigR.root);
+  // ピック（ティアドロップ型・厚さ0.7mm）。中心から先までが PICK_TIP
+  const pickShape = new THREE.Shape();
+  pickShape.moveTo(PICK_TIP,0); pickShape.bezierCurveTo(PICK_TIP-4,5, PICK_TIP-8,12, -2,12.5); pickShape.bezierCurveTo(-10,13, -14,6, -14,0);
+  pickShape.bezierCurveTo(-14,-6, -10,-13, -2,-12.5); pickShape.bezierCurveTo(PICK_TIP-8,-12, PICK_TIP-4,-5, PICK_TIP,0);
+  const pickGeo = new THREE.ExtrudeGeometry(pickShape, {depth:0.5, bevelEnabled:true, bevelThickness:0.1, bevelSize:0.3, bevelSegments:1, curveSegments:16});
+  pickGeo.translate(0, 0, -0.25);
+  const pick = new THREE.Mesh(pickGeo, new THREE.MeshStandardMaterial({color:'#f2a22c', roughness:0.3}));
+  pick.castShadow = true; scene.add(pick);
+  const pickBasis = new THREE.Matrix4();
 
   // カメラ
   const camera = new THREE.PerspectiveCamera(26, 16/9, 10, 60000);   // 遠くの水平線まで見える
@@ -246,7 +265,13 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     placeMarks(pose, !!opts.ghost);
     // 右手
     rigR.root.visible = !!opts.right;
-    if(opts.right){ const rp = rightHandPose(rigR, opts.right); window.__rp = rp; applyPose(rigR, rp); }
+    pick.visible = !!opts.right;
+    if(opts.right){
+      const rp = rightHandPose(rigR, opts.right); window.__rp = rp; applyPose(rigR, rp);
+      const {pos, x, n} = rp.pick, X = new THREE.Vector3(...x), Z = new THREE.Vector3(...n);
+      pickBasis.makeBasis(X, Z.clone().cross(X), Z);
+      pick.quaternion.setFromRotationMatrix(pickBasis); pick.position.set(...pos);
+    }
     // コードが変わったら見る中心も少しずらす（カメラごと平行移動）。全体・右手の表示では動かさない
     const nt = new THREE.Vector3(...pose.target);
     if(!lastT) lastT = nt.clone();
@@ -280,7 +305,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     const showLabels = !VIEWS[viewName].fixed;
     if(showLabels) for(let n=1; n<=5; n++) at(P([slotCenter(n), -halfW(slotCenter(n))-8, 0]), 'lab fret', n+'<small>フレット</small>');
     if(showLabels) for(let s=0; s<NSTR; s++){
-      const fr = pose.chord.frets[s], open = fr===0, mute = fr<0;
+      const fr = pose.chord.frets[s], open = fr===0, mute = fr===-1;
       at(P([-9, strY(s,0), stringZ(0)+3]), 'lab str'+(open?' open':'')+(mute?' mute':''), STRING_NAMES[s]+(open?'<small>○</small>':mute?'<small>×</small>':''));
     }
     if(opts.badges){
