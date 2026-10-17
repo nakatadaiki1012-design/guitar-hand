@@ -214,7 +214,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
         if(q) at([q[0], q[1]-30], 'fbadge', f, `background:${FINGER_COLORS[f]}`);
       }
     }
-    mainOverlay.innerHTML = html;
+    if(mainOverlay._html !== html){ mainOverlay._html = html; mainOverlay.innerHTML = html; }   // 変わった時だけ書き換える
     if(opts.skipSide) return;
 
     // ---- 輪切り図 ----
