@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildUkulele, neckSectionShape } from './uke.js';
+import { addBeach } from './beach.js';
 import { loadHand, applyPose } from './handrig.js';
 import { rightHandPose, STRUM_X } from './strum.js';
 import { slotCenter, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG } from './geom.js';
@@ -15,14 +16,14 @@ export const VIEWS = {
   self:  {label:'自分目線', pol:46, az:-90, dist:320, up:[0,0,1],  name:'自分目線（弾いている人の目から）'},
   front: {label:'正面', pol:16, az:-80, dist:340, up:[0,-1,0], name:'正面（向かい合った先生から）'},
   side:  {label:'横から', pol:78, az:160, dist:320, up:[0,0,1],  name:'横から（ボディ側から）'},
-  both:  {label:'両手', pol:44, az:-78, dist:720, up:[0,0,1],  name:'両手（全体を見る）', fixed:[150, 15, -10]},
+  both:  {label:'両手', pol:58, az:-78, dist:700, up:[0,0,1],  name:'両手（全体を見る）', fixed:[150, 15, -10]},
   right: {label:'右手', pol:62, az:-118, dist:400, up:[0,0,1],  name:'右手（ストロークを見る）', fixed:[STRUM_X, 0, 25]}
 };
 
 export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverlay, onTap}){
   const mkRenderer = canvas => {
     const r = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
-    r.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+    r.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.5));
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -37,12 +38,14 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   scene.environment = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
 
   // 光：天井側・客席側からのやわらかい主光源＋まわりの反射
-  scene.add(new THREE.HemisphereLight('#fff2e2', '#3b2617', 0.55));
-  const key = new THREE.DirectionalLight('#fff3e4', 2.4);
+  const beach = addBeach(scene);
+  scene.add(new THREE.HemisphereLight('#eaf6ff', '#d8c7a0', 0.7));
+  const key = new THREE.DirectionalLight('#fff6ea', 2.6);
   key.position.set(-160, -260, 420); key.target.position.set(60, 10, -10);
   key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
-  Object.assign(key.shadow.camera, {left:-170, right:170, top:170, bottom:-170, near:50, far:1200});
+  key.shadow.mapSize.set(1024, 1024);
+  Object.assign(key.shadow.camera, {left:-300, right:300, top:300, bottom:-300, near:50, far:1400});
+  key.target.position.set(150, 0, -40);
   key.shadow.bias = -0.0004; key.shadow.normalBias = 0.8; key.shadow.radius = 4;
   scene.add(key, key.target);
   const rim = new THREE.DirectionalLight('#ffd9b8', 0.6); rim.position.set(300, 200, 150); scene.add(rim);
@@ -209,7 +212,7 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   }
   const project = (cam, p, W, H) => { const v = new THREE.Vector3(...p).project(cam); if(v.z > 1) return null; return [(v.x+1)/2*W, (1-v.y)/2*H]; };
 
-  const basePR = Math.min(window.devicePixelRatio||1, 2);
+  const basePR = Math.min(window.devicePixelRatio||1, 1.5);
   let curPR = basePR;
   function render(pose, opts){
     // 動いている間は解像度を少し下げる（重い端末でカクカクしないように）
@@ -328,7 +331,13 @@ export async function createView({mainCanvas, sideCanvas, mainOverlay, sideOverl
   setView('diag'); setView2('front');
   return {
     render, setView, rig, rigR, rightHandPose,
-    setView2, get cams(){ return [camera.position.toArray(), camera2.position.toArray(), controls.target.toArray()]; },
+    setView2,
+    // 処理が重い端末向け：影を切る（いちど切ると戻さない）
+    setShadows(on){
+      if(key.castShadow === on) return;
+      key.castShadow = on;
+      scene.traverse(o=>{ if(o.material){ (Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate = true); } });
+    }, get cams(){ return [camera.position.toArray(), camera2.position.toArray(), controls.target.toArray()]; },
     setSplit(on){ splitOn = on; if(!on){ controls.enabled = true; if(controls2) controls2.enabled = false; } },
     debugCam(pos, look){ camera.position.set(...pos); controls.target.set(...look); controls.update(); },
     onChange(fn){ requestRender = fn; },

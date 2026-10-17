@@ -20,8 +20,8 @@ const CFG = {
   curl:  {1:[26,56,48], 2:[66,95,55], 3:[72,98,55], 4:[76,98,55]},  // 指の曲げ（付け根・第二・第一関節）
   splay: {1:6, 2:0, 3:-7, 4:-15},            // 指を軽く寄せる（度）
   pivotUp: 120,                              // 腕で振る時の中心：弦から客席側へ何mmか
-  rollMix: 0.5,                              // 回す軸：0=手首の横振り … 1=前腕のひねり
-  armFollow: 0.3,                            // 弦の上の動きのうち、腕ごと動く割合（残りは手首のスナップ）
+  mix: [0.55, 0.30, 0.15],                   // 回す軸の配分：手首の横振り・前腕のひねり・ネック方向
+  armFollow: 0.2,                            // 弦の上の動きのうち、腕ごと動く割合（残りは手首のスナップ）
   elbow: [0.55, -0.50, -0.67],               // 手首→ひじの向き：前腕はウクレレの尾側から、ボディの上の縁にのせて斜めに来る
 };
 
@@ -99,7 +99,8 @@ export function rightHandPose(rig, st){
   // 中心が指先に近づくぶん、同じ幅を弦の上で動くように角度を大きくする
   const pivot = W;
   // 回す軸：前腕のひねり（前腕の向き）と手首の横振り（ネックの向き）の中間
-  const ax = norm(add(mul([1,0,0], 1-CFG.rollMix), mul(fa0, -CFG.rollMix)));
+  // 回す軸：手首の横振り（手のひらに垂直な軸）＋前腕のひねり（前腕の向き）＋少しだけネックの向き
+  const ax = norm(add(add(mul(N, CFG.mix[0]), mul(fa0, -CFG.mix[1])), mul([1,0,0], CFG.mix[2])));
   const hv = sub(target, pivot), rHit = vlen(sub(hv, mul(ax, dot(hv, ax))));
   const reach = st.theta * (CFG.pivotUp - 4);                   // 弦の上で指先が動く幅（mm）
   const follow = reach * CFG.armFollow;                          // 腕ごと少しついてくる分

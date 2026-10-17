@@ -19,7 +19,7 @@ function renderDiagram(chord){
   const el = document.getElementById('diagram');
   const L=28, T=40, W=94, H=150, cols=4, rows=5;
   const sx = i => L + i*W/(cols-1), sy = j => T + j*H/rows;
-  let s = `<rect width="150" height="210" rx="10" fill="#f6ece0"/>`;
+  let s = `<rect width="150" height="210" rx="10" fill="#faf8f3"/>`;
   s += `<text x="75" y="22" text-anchor="middle" font-size="16" font-weight="800" fill="#1b1410">${chord.name}</text>`;
   for(let j=0;j<=rows;j++) s += `<line x1="${L}" x2="${L+W}" y1="${sy(j)}" y2="${sy(j)}" stroke="#555" stroke-width="${j?1.4:5}"/>`;
   for(let i=0;i<cols;i++){
@@ -557,7 +557,7 @@ function kick(){ dirty = true; if(!raf) raf = requestAnimationFrame(loop); }
 //  ・右手の動きは少しだけ「ならす」（急に止まったり跳んだりしない）
 //  ・輪切り図は、手が止まった時だけ描き直す
 //  ・重い端末では、動いている間だけ自動で解像度を下げる
-let rSmooth = null, lastFrame = 0, frameAvg = 16, quality = 1, wasMoving = false;
+let rSmooth = null, lastFrame = 0, frameAvg = 16, quality = 1, wasMoving = false, slowCount = 0, lowPower = false;
 function smoothRight(target, now){
   if(!target){ rSmooth = null; return null; }
   if(!rSmooth){ rSmooth = {...target}; return rSmooth; }
@@ -583,6 +583,7 @@ function loop(now){
   if(moving && wasMoving){
     frameAvg = frameAvg*0.9 + Math.min(100, now - lastFrame)*0.1;
     if(frameAvg > 24 && quality > 0.5) { quality = Math.max(0.5, quality - 0.1); frameAvg = 16; }
+    else if(frameAvg > 24 && quality <= 0.5 && ++slowCount > 40 && !lowPower){ lowPower = true; view.setShadows(false); }   // それでも重ければ影を切る
     else if(frameAvg < 17.5 && quality < 1) quality = Math.min(1, quality + 0.02);
   }
   lastFrame = now;

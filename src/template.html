@@ -7,29 +7,31 @@
 <meta name="description" content="ウクレレのコードの押さえ方を、リアルな手の形で表示する練習アプリ">
 <style>
   :root{
-    --bg:#1b1410; --panel:#271d17; --panel2:#30241c; --line:#46352a;
-    --text:#f6ece0; --sub:#c9b6a3; --dim:#8c7a69; --accent:#ffb24d; --accent2:#ff7a59;
+    --bg:#f3f0ea; --panel:#ffffff; --panel2:#f6f4ef; --line:#e4ded3;
+    --text:#1d2a30; --sub:#55666e; --dim:#8a989e; --accent:#0e9f9a; --accent2:#ff6b4a;
     --f1:#ff6b6b; --f2:#ffb84d; --f3:#4dc3ff; --f4:#b48cff;
-    --on:linear-gradient(180deg,#ffbf66,#ff9a3d);
+    --shadow:0 1px 2px rgba(20,40,50,.06),0 6px 24px rgba(20,40,50,.06);
+    --on:#0e9f9a;
   }
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--text);
     font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Noto Sans JP","Yu Gothic",Meiryo,sans-serif;
     -webkit-tap-highlight-color:transparent}
-  body{min-height:100vh;background:radial-gradient(1200px 600px at 20% -10%,#3b2a1e 0,transparent 60%),var(--bg)}
+  body{min-height:100vh;background:linear-gradient(180deg,#e9f4f3 0,var(--bg) 320px)}
   header{max-width:1400px;margin:0 auto;padding:10px 16px 6px;display:flex;align-items:baseline;gap:10px}
   header h1{font-size:18px;margin:0;letter-spacing:.04em;white-space:nowrap}
   header h1 span{color:var(--accent)}
+  header h1{font-weight:800;letter-spacing:.02em}
   header p{margin:0;color:var(--dim);font-size:12px}
   button,select{font:inherit;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:9px;
     padding:6px 10px;cursor:pointer;transition:transform .08s,background .15s,border-color .15s;font-size:14px}
-  button:hover,select:hover{border-color:#6a5141}
+  button:hover,select:hover{border-color:#b9c9c8}
   button:active{transform:scale(.96)}
-  button.on{background:var(--on);color:#2b1a0c;border-color:#ffbf66;font-weight:700}
+  button.on{background:var(--on);color:#fff;border-color:var(--on);font-weight:700}
   button:disabled{opacity:.28;cursor:not-allowed}
   select{appearance:none;-webkit-appearance:none;padding-right:26px;
     background:var(--panel2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23c9b6a3'/%3E%3C/svg%3E") no-repeat right 9px center}
-  .play{background:linear-gradient(180deg,#ff8f6b,#ff6a4a);border-color:#ff8f6b;color:#2a0f06;font-weight:700}
+  .play{background:var(--accent2);border-color:var(--accent2);color:#fff;font-weight:700}
   .big{font-size:15px;padding:8px 14px}
 
   /* 全体の配置：パソコンは左に3D・右にパネル、スマホは縦に並べる */
@@ -37,7 +39,7 @@
     grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr);align-items:start}
   @media (max-width:900px){.app{grid-template-columns:1fr}}
   .app>*{min-width:0}
-  .card{background:linear-gradient(180deg,var(--panel),#221913);border:1px solid var(--line);border-radius:14px;padding:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:var(--shadow)}
   .stage{position:sticky;top:8px}
   @media (max-width:900px){.stage{position:static}}
   .stage-head{display:flex;align-items:center;gap:10px;padding:0 4px 8px;flex-wrap:wrap}
@@ -45,7 +47,7 @@
   #chordReading{color:var(--sub);font-size:13px}
   #difficulty{font-size:12px;color:var(--accent)}
   .stage-head .acts{margin-left:auto;display:flex;gap:6px}
-  .svgwrap{position:relative;border-radius:10px;overflow:hidden;background:#140e0a}
+  .svgwrap{position:relative;border-radius:12px;overflow:hidden;background:#cfe6ea}
   svg{display:block;width:100%;height:auto}
   #handView{display:block;width:100%;aspect-ratio:16/9;cursor:grab;touch-action:none}
   @media (max-width:640px){#handView{aspect-ratio:4/3}}
@@ -55,10 +57,10 @@
   .lab{font-weight:800;color:#f6ece0;font-size:14px;text-shadow:0 0 4px #000,0 0 8px #000}
   .lab small{font-size:10px;font-weight:400;color:#c9b6a3;margin-left:1px}
   .lab.open{color:#ffd36b}
-  .fbadge{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#1b1410;border:3px solid #1b1410;font-size:14px;box-shadow:0 2px 6px #0008}
-  .loading{position:absolute;inset:0;display:grid;place-items:center;color:#c9b6a3;font-size:14px}
+  .fbadge{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#1d2a30;border:3px solid #fff;font-size:14px;box-shadow:0 2px 6px #0008}
+  .loading{position:absolute;inset:0;display:grid;place-items:center;color:#55666e;font-size:14px}
   #mainWrap.split .hint{display:none}
-  .hint{position:absolute;right:8px;bottom:6px;font-size:10px;color:var(--dim);pointer-events:none}
+  .hint{position:absolute;right:8px;bottom:6px;font-size:10px;color:#fff;text-shadow:0 0 4px #0006;pointer-events:none}
   .sidetag{position:absolute;right:6px;top:6px;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800;color:#1b1410}
   .toolbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
   .toolbar label{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--sub)}
@@ -70,15 +72,15 @@
   .tl{font-size:12px;color:var(--sub)}
   #handView.split{aspect-ratio:2/1}
   @media (max-width:640px){#handView.split{aspect-ratio:4/3} .seg button{padding:5px 7px;font-size:12px}}
-  .splitline{pointer-events:none;position:absolute;top:0;bottom:0;width:2px;background:#000;transform:translateX(-1px)}
-  .vsel{position:absolute;top:6px;left:6px;background:#000a;backdrop-filter:blur(4px);border:1px solid #fff3;color:#f6ece0;
+  .splitline{pointer-events:none;position:absolute;top:0;bottom:0;width:2px;background:#fff;transform:translateX(-1px)}
+  .vsel{position:absolute;top:6px;left:6px;background:rgba(255,255,255,.75);backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.9);color:#1d2a30;box-shadow:0 2px 8px rgba(0,0,0,.12);
     padding:4px 10px;font-size:12px;border-radius:999px;font-weight:700}
   .vsel:hover{border-color:var(--accent)}
   #mainWrap.split .vsel2{left:calc(50% + 6px)}
   .vname{position:absolute;top:6px;font-size:11px;color:var(--sub);background:#0008;padding:2px 7px;border-radius:999px}
   .fpick{display:flex;gap:6px;margin:6px 0 0;flex-wrap:wrap}
-  .fpick button{padding:4px 10px;font-size:12px;font-weight:700;color:#1b1410;border:2px solid transparent}
-  .fpick button.focus{border-color:#fff}
+  .fpick button{padding:4px 10px;font-size:12px;font-weight:700;color:#1d2a30;border:2px solid transparent}
+  .fpick button.focus{border-color:#1d2a30}
   .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-top:6px;padding:0 2px}
   .legend span{display:inline-flex;align-items:center;gap:4px}
   .legend i{width:10px;height:10px;border-radius:50%;display:inline-block}
@@ -108,12 +110,12 @@
   .steps{list-style:none;margin:0;padding:0;display:grid;gap:6px}
   .steps li{display:flex;gap:8px;align-items:center;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:14px}
   .steps li[data-f]{cursor:pointer}
-  .steps li.focus{border-color:var(--accent);box-shadow:0 0 0 2px #ffb24d33 inset}
-  .badge{flex:0 0 auto;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#1b1410;font-size:14px}
-  .steps b{color:#fff}
+  .steps li.focus{border-color:var(--accent);box-shadow:0 0 0 2px #0e9f9a33 inset}
+  .badge{flex:0 0 auto;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#1d2a30;font-size:14px}
+  .steps b{color:var(--text)}
   .views{display:grid;grid-template-columns:1fr 112px;gap:8px;align-items:start;margin-top:8px}
   .cap{font-size:11px;color:var(--dim);margin:4px 2px 0;line-height:1.5}
-  details.tips{margin-top:8px;border-radius:10px;background:#2c2119;border:1px dashed #5a4433;color:var(--sub);font-size:12px;line-height:1.7}
+  details.tips{margin-top:8px;border-radius:10px;background:var(--panel2);border:1px dashed var(--line);color:var(--sub);font-size:12px;line-height:1.7}
   details.tips summary{cursor:pointer;padding:7px 10px;color:var(--accent);font-weight:700}
   details.tips div{padding:0 10px 8px}
   details.tips strong{color:var(--accent)}
@@ -122,37 +124,37 @@
   .field select{flex:1;min-width:0}
   .prog-chords{display:flex;gap:6px;flex-wrap:wrap}
   .pc{min-width:52px;text-align:center;padding:7px 6px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);font-size:17px;font-weight:800;cursor:pointer}
-  .pc.now{background:var(--on);color:#2b1a0c;border-color:#ffbf66}
-  .pc.next{border-color:var(--accent);box-shadow:0 0 0 2px #ffb24d44 inset}
+  .pc.now{background:var(--on);color:#fff;border-color:var(--on)}
+  .pc.next{border-color:var(--accent);box-shadow:0 0 0 2px #0e9f9a44 inset}
   .pattern{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:8px}
   .pattern.w6{grid-template-columns:repeat(6,1fr)}
   .pattern .st{padding:4px 0 2px;text-align:center;border-radius:8px;background:var(--panel2);border:1px solid var(--line)}
-  .pattern .st b{display:block;font-size:20px;line-height:1;color:#fff}
+  .pattern .st b{display:block;font-size:20px;line-height:1;color:var(--text)}
   .pattern .st small{font-size:10px;color:var(--sub)}
-  .pattern .st.ghost b{color:#6b5848}
-  .pattern .st.on{background:var(--on);border-color:#ffbf66}
-  .pattern .st.on b,.pattern .st.on small{color:#2b1a0c}
+  .pattern .st.ghost b{color:#c3ccce}
+  .pattern .st.on{background:var(--on);border-color:var(--on)}
+  .pattern .st.on b,.pattern .st.on small{color:#fff}
   .runbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
   .runbar .tempo{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--sub)}
   input[type=range]{accent-color:var(--accent);width:110px}
   .beats{display:flex;gap:5px}
-  .beat{width:12px;height:12px;border-radius:50%;background:#3a2c22;border:1px solid var(--line)}
+  .beat{width:12px;height:12px;border-radius:50%;background:#e7e2d8;border:1px solid var(--line)}
   .beat.on{background:var(--accent);box-shadow:0 0 10px var(--accent)}
   .song-info{display:flex;flex-direction:column;gap:1px;margin:8px 0;font-size:12px;color:var(--sub)}
-  .song-info b{font-size:15px;color:#fff}
+  .song-info b{font-size:15px;color:var(--text)}
   .song-info .muted{color:var(--dim)}
   .song-sheet{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
   .song-sheet .bar{display:flex;gap:6px;justify-content:center;padding:6px 2px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);font-weight:800;font-size:14px}
   .song-sheet .bar span+span{color:var(--sub)}
-  .song-sheet .bar.now{background:var(--on);color:#2b1a0c;border-color:#ffbf66}
-  .song-sheet .bar.now span+span{color:#5a3412}
+  .song-sheet .bar.now{background:var(--on);color:#fff;border-color:var(--on)}
+  .song-sheet .bar.now span+span{color:#d6f3f1}
   #songList{display:flex;gap:4px;flex-wrap:wrap}
   footer{max-width:1400px;margin:0 auto;padding:0 16px 20px;color:var(--dim);font-size:11px}
 </style>
 </head>
 <body>
 <header>
-  <h1>🎶 ウクレレ・<span>ハンドガイド</span></h1>
+  <h1>🌺 ウクレレ・<span>ハンドガイド</span></h1>
   <p>押さえ方を3Dの手で</p>
 </header>
 
