@@ -300,23 +300,31 @@ export function eventChord(e){
 }
 export const eventPressed = e => e.notes.some(n=>n.f > 0);
 
-/* ---------- メロディの指の動き（むだな動きを少なく） ----------
-   ・手（手首・手のひら）はポジションの間ずっと同じ。ポジションが変わる時だけ手ごと動く
-   ・押さえ終わった指は、すぐには戻さず、その場で2mmほど浮かせて待つ（次にまた使う時にすぐ押さえられる）
+/* ---------- メロディの指の動き（むだな動きを少なく・自然に） ----------
+   ・ポジション（人差し指のフレット P）ごとに、手の構えを2つから選ぶ（前後の音を見て決める）
+       spread「指を開く形」：4本の指を1フレットずつ開いて並べる。小指まで使う時・4フレットにまたがる時・
+                            3本以上の弦を行き来する時。親指はネックの裏
+       diag「斜めの形」　：人差し指のつけ根をネックのふちに当てて、手を少し斜めにし、指をのばして押さえる。
+                            2〜3フレットの中で1〜2本の弦を弾く時。親指はネックの上から少しのぞく
+   ・手の位置はポジションの間ずっと同じ（斜めの形では、人差し指のつけ根を支点に傾きだけ少し変わる）
+   ・押さえ終わった指は、すぐには戻さず、その場で2mmほど浮かせて待つ
    ・その弦を開放弦や別の指で弾く時は、押さえていた指をその弦から少し上げる
-   ・まだ使っていない指は、自分のフレット（P〜P+3）の上で、そのポジションでよく弾く弦の上に浮かせて待つ
-   返り値：音ごとに {指: [弦, フレット, 浮かせる高さ]}（押さえる指は入らない） */
+   ・まだ使っていない指は、自分のフレットの上で、そのポジションでよく弾く弦の上に浮かせて待つ
+   返り値：音ごとに {hover: {指: [弦, フレット, 浮かせる高さ]}, grip, home} */
 export function fingerPlan(events){
   const plan = [];
-  let P = null, last = {}, home = 2.5;
+  let P = null, last = {}, home = 3, grip = 'spread';
   for(let i=0;i<events.length;i++){
     const e = events[i];
     if(e.P !== P){
       P = e.P; last = {};
-      // このポジションのあいだに弾く弦の平均（指を待たせる弦）
-      let sum = 0, n = 0;
-      for(let j=i; j<events.length && events[j].P === P; j++) for(const nt of events[j].notes) if(nt.f > 0){ sum += nt.s; n++; }
-      home = n ? Math.round(sum/n) : 2.5;
+      // このポジションのあいだに弾く音を見て、構えと、指を待たせる弦を決める
+      let sum = 0, n = 0, maxRel = 0, pinky = false; const strs = new Set();
+      for(let j=i; j<events.length && events[j].P === P; j++) for(const nt of events[j].notes) if(nt.f > 0){
+        sum += nt.s; n++; strs.add(nt.s); maxRel = Math.max(maxRel, nt.f - P); if(nt.k === 4) pinky = true;
+      }
+      home = n ? Math.round(sum/n) : 3;
+      grip = (pinky || maxRel >= 3 || strs.size >= 3) ? 'spread' : 'diag';
     }
     const pressing = new Set(), played = new Set(e.notes.map(n=>n.s));
     for(const n of e.notes) if(n.f > 0 && n.k){ pressing.add(n.k); last[n.k] = {s: n.s, f: n.f}; }
@@ -326,9 +334,9 @@ export function fingerPlan(events){
       if(pressing.has(k)) continue;
       const l = last[k];
       if(l) hover[k] = [l.s, l.f, played.has(l.s) ? 4 : 2];
-      else hover[k] = [home, P + k - 1, 5];
+      else hover[k] = [home, P + k - 1, grip === 'diag' && k === 4 ? 9 : 4];
     }
-    plan.push(hover);
+    plan.push({hover, grip, home});
   }
   return plan;
 }

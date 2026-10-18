@@ -666,7 +666,8 @@ function highlightTab(i){
 function tabEventPose(sg, i){
   const e = sg.events[i];
   sg.plan ||= fingerPlan(sg.events);
-  const pose = computeTabPose(eventChord(e), view.rig, e.P || 1, sg.plan[i]);
+  const pl = sg.plan[i];
+  const pose = computeTabPose(eventChord(e), view.rig, e.P || 1, pl.hover, pl.grip, pl.home);
   const open = e.notes.filter(n=>!n.f).map(n=>n.s);
   return open.length ? {...pose, openStr: open} : pose;
 }
@@ -678,7 +679,9 @@ function showTabEvent(i, still=false){
   document.getElementById('chordReading').textContent = e.notes.map(noteLabel).join(' ／ ');
   const nx = sg.events[i+1];
   stripKey = '';
-  chordCard.innerHTML = `<div class="tabnow"><b>いま</b>${e.notes.map(noteLabel).join('<br>')}</div>` +
+  sg.plan ||= fingerPlan(sg.events);
+  const gname = {spread:'指を開く形', diag:'斜めの形'}[sg.plan[i].grip];
+  chordCard.innerHTML = `<div class="tabnow"><b>いま・${e.P||1}ポジション・${gname}</b>${e.notes.map(noteLabel).join('<br>')}</div>` +
     (nx ? `<b class="arr">→</b><div class="tabnow next"><b>次</b>${nx.notes.map(noteLabel).join('<br>')}</div>` : '');
   if(still && view){ const now = performance.now(), nx = tabEventPose(sg, i); poseFrom = poseTo ? currentPose(now) : null; tweenStart = now; tweenDur = 160; poseTo = window.__pose = nx; kick(); }
 }
@@ -744,11 +747,11 @@ async function startTab(){
   // 曲で使う手の形を先に計算しておく（少しずつ・画面を止めないように）
   const btn = document.getElementById('btnTab');
   sg.plan ||= fingerPlan(sg.events);
-  const todo = sg.events.map((e,i)=>[eventChord(e), e.P||1, sg.plan[i]]);
+  const todo = sg.events.map((e,i)=>[eventChord(e), e.P||1, sg.plan[i]]);   // [コード, ポジション, 指の動き]
   const run = ++tabs.prep;
   for(let k=0;k<todo.length;k++){
     btn.textContent = `準備中 ${k}/${todo.length}`;
-    computeTabPose(todo[k][0], view.rig, todo[k][1], todo[k][2]);
+    computeTabPose(todo[k][0], view.rig, todo[k][1], todo[k][2].hover, todo[k][2].grip, todo[k][2].home);
     await new Promise(r=>setTimeout(r, 0));
     if(run !== tabs.prep) return;                                 // 準備中にストップや曲の変更があった
   }

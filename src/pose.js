@@ -139,7 +139,8 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
   const fullBarre = !!barre && (barre.to-barre.from+1) >= 3;
   const H = handFrame(fullBarre, prm);
   const used = {};
-  chord.fingers.forEach((f,s)=>{ if(!f) return; (used[f] ||= {strings:[], fret:chord.frets[s]}).strings.push(s); });
+  if(opts.pressT) for(const f in opts.pressT){ const [s, fr] = opts.pressT[f]; used[f] = {strings:[s], fret:fr}; }   // 構えを決める時：指ごとに押さえる場所を直接決める
+  else chord.fingers.forEach((f,s)=>{ if(!f) return; (used[f] ||= {strings:[], fret:chord.frets[s]}).strings.push(s); });
   // 指先の位置（フレットのすぐ手前。同じフレットに何本か並ぶときは斜めにずらす）
   const tipX = {}, byFret = {};
   for(const f in used){ if(barre && +f===1) continue; (byFret[used[f].fret] ||= []).push(+f); }
@@ -226,22 +227,33 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
   const bend = Math.acos(Math.max(-1, Math.min(1, dot(H.F, mul(norm(HAND_CFG.arm),-1)))))/DEG;
   if(bend > 30) cost += (bend-30)*(bend-30)*0.02;
 
+  // 構えの形（メロディ）：指のつけ根（ナックル）が、ネックの1弦側のふちの近くに来るように
+  //   spread（指を開く形）：つけ根はネックと平行に、指板の高さあたりに並ぶ。指はふちの上から弦へアーチを描いて下りる
+  //   diag（斜めの形）：人差し指のつけ根をネックのふちに当て、小指側ほどネックから離れる（手が斜めになる）
+  if(opts.style){
+    const st = opts.style;
+    for(let f=1; f<=4; f++){
+      const dy = K[f][1] - (halfW(K[f][0]) + st.ky + st.dky*(f-1)), dz = K[f][2] - (st.kz + st.dkz*(f-1));
+      addc('style', st.w*(dy*dy + dz*dz));
+    }
+  }
   // 親指：関節が自然に曲がる範囲の中で、ネックの裏に軽く当たる形をさがす（thumb.js）
   rig.thumbModel ||= makeThumbModel(THUMB_JOINTS.map(n=>rig.rest[n]), THUMB_JOINTS.map(n=>rig.restBasis[n]), [0,-1,0]);
   const toWd = v => toWorld(H, [0,0,0], v);
   const th = solveThumb(rig.thumbModel, v=>toWorld(H, W, v), toWd,
-                        { xTarget: (K[1][0]+K[2][0])/2, yTarget: HAND_CFG.thumbY, peek: HAND_CFG.thumbPeek, peekZ: HAND_CFG.thumbPeekZ, start: thumbStart });
+                        { xTarget: (K[1][0]+K[2][0])/2, yTarget: opts.style?.thumbY ?? HAND_CFG.thumbY,
+                          peek: opts.style ? opts.style.peek : HAND_CFG.thumbPeek, peekZ: HAND_CFG.thumbPeekZ, start: thumbStart });
   addc('thumb', th.cost);
   return {cost, parts, H, W, K, M, fingers, tipX, th, toWd, barre, anc};
 }
 
 // 手の向き・位置を少しずつ変えて、いちばん無理のない持ち方をさがす
 const PRM_STEP = {pitch:8, yaw:8, roll:8, yK:5, zK:5, dx1:4, dx2:4, dx3:4, dx4:4};
-const PRM_LIM  = {pitch:[-45,45], yaw:[-35,35], roll:[-35,35], yK:[18,64], zK:[-42,2], dx1:[-24,4], dx2:[-24,4], dx3:[-24,4], dx4:[-24,4]};
+const PRM_LIM  = {pitch:[-45,45], yaw:[-35,35], roll:[-35,35], yK:[18,64], zK:[-42,8], dx1:[-24,4], dx2:[-24,4], dx3:[-24,4], dx4:[-24,4]};
 const poseCache = new Map();
 export const clearPoseCache = () => poseCache.clear();   // ギターの種類を変えた時は計算し直す
-function localSearch(chord, rig, prm, pressing, scales){
-  let best = buildHand(chord, rig, prm), thStart = best.th.ang;
+function localSearch(chord, rig, prm, pressing, scales, opts={}){
+  let best = buildHand(chord, rig, prm, undefined, opts), thStart = best.th.ang;
   for(const scale of scales){
     let improved = true, guard = 0;
     while(improved && guard++ < 12){
@@ -251,7 +263,7 @@ function localSearch(chord, rig, prm, pressing, scales){
         const v = Math.min(PRM_LIM[k][1], Math.max(PRM_LIM[k][0], prm[k] + sgn*PRM_STEP[k]*scale));
         if(v === prm[k]) continue;
         const cand = {...prm, [k]: v};
-        const r = buildHand(chord, rig, cand, thStart);
+        const r = buildHand(chord, rig, cand, thStart, opts);
         if(r.cost < best.cost - 1e-4){ best = r; prm = cand; thStart = r.th.ang; improved = true; }
       }
     }
@@ -259,7 +271,7 @@ function localSearch(chord, rig, prm, pressing, scales){
   best.prm = prm;
   return best;
 }
-function optimizeHand(chord, rig){
+function optimizeHand(chord, rig, opts={}){
   const fullBarre = !!chord.barre && (chord.barre.to-chord.barre.from+1) >= 3;
   const base = {pitch:0, yaw:0, roll:0, yK: fullBarre ? HAND_CFG.yKb : HAND_CFG.yK, zK: fullBarre ? HAND_CFG.zKb : HAND_CFG.zK, dx1:0, dx2:0, dx3:0, dx4:0};
   const pressing = new Set(chord.fingers.filter(Boolean));
@@ -275,10 +287,10 @@ function optimizeHand(chord, rig){
   let best = null;
   // メロディ（1音ずつ）は形が単純なので、出発点を減らして早く計算する
   for(const st of chord.melody ? starts.slice(0,3) : starts){
-    const r = localSearch(chord, rig, {...st}, pressing, [1, 0.5]);
+    const r = localSearch(chord, rig, {...st}, pressing, [1, 0.5], opts);
     if(!best || r.cost < best.cost) best = r;
   }
-  return localSearch(chord, rig, best.prm, pressing, [0.5, 0.25, 0.125]);
+  return localSearch(chord, rig, best.prm, pressing, [0.5, 0.25, 0.125], opts);
 }
 
 export function computePose(chord, rig){
@@ -292,30 +304,57 @@ export function computePose(chord, rig){
    ・まず、そのポジションの「構え」を決める（人差し指〜小指が P〜P+3 フレットに並ぶ形で、いちばん無理のない手の位置）
    ・音ごとに、手の前後の位置はそのまま。高さ・傾きだけを少し（構えから離れるほどコストが増える）調整して、
      押さえる指をのばす。使わない指は自分のフレットの上で浮かせて待つ */
-function positionAnchor(P, rig){
-  const key = 'anchor@' + P;
+export const GRIPS = {
+  spread: {label:'指を開く形', ky:8, dky:0, kz:0, dkz:0, w:0.08, peek:0, thumbY:-1},   // 親指はネックの裏のまん中
+  diag:   {label:'斜めの形',   ky:2, dky:2.5, kz:0, dkz:-1.5, w:0.12, peek:6},       // 親指はネックの上から少しのぞく
+};
+function positionAnchor(P, rig, grip='spread', home=3){
+  const key = `anchor@${P}:${grip}:${home}`;
   if(!poseCache.has(key)){
-    const ch = {name:key, frets:[-1, P, P+1, P+2, P+3, -1], fingers:[0,1,2,3,4,0], barre:null, melody:true};
-    poseCache.set(key, optimizeHand(ch, rig));
+    const style = GRIPS[grip];
+    // 構え：spread は4本の指が P〜P+3 フレットの、よく弾く弦の上に並ぶ形。diag は人差し指〜薬指が P〜P+2 に並ぶ形
+    const pressT = {};
+    const n = grip === 'spread' ? 4 : 3;
+    for(let f=1; f<=n; f++) pressT[f] = [home, P + f - 1];
+    const ch = {name:key, frets:[-2,-2,-2,-2,-2,-2], fingers:[0,0,0,0,0,0], barre:null, melody:true};
+    poseCache.set(key, optimizeHand(ch, rig, {style, pressT}));
   }
   return poseCache.get(key);
 }
 /* hover：押さえていない指の待つ場所 {指: [弦, フレット, 浮かせる高さmm]}。手（手首・手のひら）は構えのまま動かさない */
-export function computeTabPose(chord, rig, P=1, hover=null){
+export function computeTabPose(chord, rig, P=1, hover=null, grip='spread', home=3){
   const hk = hover ? Object.entries(hover).map(([f,[s,fr,l]])=>`${f}:${s}.${fr}.${l}`).join(',') : '';
-  const key = chord.name + '@' + P + '|' + hk;
+  const key = chord.name + '@' + P + ':' + grip + ':' + home + '|' + hk;
   let hb = poseCache.get(key);
   if(!hb){
-    const an = positionAnchor(P, rig);
+    const an = positionAnchor(P, rig, grip, home);
     const ss = chord.frets.map((f,s)=>f>=0 ? s : -1).filter(s=>s>=0);
     const hoverT = {};
     if(hover) for(const f in hover){
       const [s, fr, lift] = hover[f], x = fretX(fr) - 4.5;
       hoverT[f] = [x, strY(s, x) + 1.0, stringZ(x) + 1 + PAD_R + lift];
     }
-    const opts = {anc: an.anc, hoverP: P, hoverS: ss.length ? ss.reduce((a,b)=>a+b,0)/ss.length : 2.5, hoverT};
-    hb = buildHand(chord, rig, {...an.prm, dx1:0, dx2:0, dx3:0, dx4:0}, an.th.ang, opts);
-    hb.prm = an.prm;
+    const opts = {anc: an.anc, hoverP: P, hoverS: ss.length ? ss.reduce((a,b)=>a+b,0)/ss.length : 2.5, hoverT, style: GRIPS[grip]};
+    // 手の位置（つけ根）は構えのまま。斜めの形では、人差し指のつけ根を支点に手の傾きだけ少し変えて指をのばす
+    let prm = {...an.prm, dx1:0, dx2:0, dx3:0, dx4:0};
+    hb = buildHand(chord, rig, prm, an.th.ang, opts);
+    if(grip === 'diag'){
+      const keys = {yaw:[4, 0.04], roll:[4, 0.04], pitch:[4, 0.04]};
+      const stay = q => Object.entries(keys).reduce((c,[k,[,w]])=>c + w*(q[k]-an.prm[k])**2, 0);
+      let bestC = hb.cost;
+      for(const scale of [1, 0.5]){
+        let improved = true, guard = 0;
+        while(improved && guard++ < 5){
+          improved = false;
+          for(const k in keys) for(const sgn of [-1,1]){
+            const cand = {...prm, [k]: Math.min(PRM_LIM[k][1], Math.max(PRM_LIM[k][0], prm[k] + sgn*keys[k][0]*scale))};
+            const r = buildHand(chord, rig, cand, hb.th.ang, opts), c = r.cost + stay(cand);
+            if(c < bestC - 1e-4){ hb = r; prm = cand; bestC = c; improved = true; }
+          }
+        }
+      }
+    }
+    hb.prm = prm; hb.grip = grip;
     poseCache.set(key, hb);
   }
   return poseFromHand(hb, chord, rig);
