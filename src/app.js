@@ -1013,16 +1013,24 @@ applyCapo();
 
 /* ---------- 内カメラの小窓：自分の手を映して、3Dの手と見比べながら練習する ----------
    ・カメラの映像はこの端末の中だけで表示する（どこにも送らない・保存しない）
-   ・小窓はドラッグで好きな場所へ。大きさは 小・中・大。左右反転（鏡のように見える）も切り替えられる
+   ・ふつうは3Dの横（スマホの縦向きでは下）に並べて、3Dの手と重ならないようにする
+   ・「小窓にする」で3Dの上に重ねる小窓にもできる。小窓はドラッグで好きな場所へ、大きさは 小・中・大
+   ・左右反転（鏡のように見える）も切り替えられる
    ・「3Dを合わせる」：3Dを正面（向かい合った向き）＋左右反転にして、鏡に映った自分と同じ向きにする */
 const camBtn = document.getElementById('camBtn'), camWin = document.getElementById('camWin');
 const camVideo = document.getElementById('camVideo'), camMsg = document.getElementById('camMsg');
-state.cam = {size:'m', flip:true, x:null, y:null, ...(state.cam || {})};
+state.cam = {size:'m', flip:true, x:null, y:null, layout:'side', ...(state.cam || {})};
 let camStream = null;
 function camLayout(){
-  camWin.classList.remove('s','m','l'); camWin.classList.add(state.cam.size);
+  const side = state.cam.layout === 'side' && !camWin.hidden;
+  document.getElementById('mainWrap').classList.toggle('camside', side);
+  camWin.classList.remove('s','m','l'); if(!side) camWin.classList.add(state.cam.size);
   camVideo.classList.toggle('flip', state.cam.flip);
-  if(state.cam.x != null){ camWin.style.left = state.cam.x*100 + '%'; camWin.style.top = state.cam.y*100 + '%'; camWin.style.right = camWin.style.bottom = 'auto'; }
+  document.getElementById('camSize').hidden = side;
+  document.getElementById('camLayoutBtn').textContent = side ? '小窓にする' : '並べる';
+  if(!side && state.cam.x != null){ camWin.style.left = state.cam.x*100 + '%'; camWin.style.top = state.cam.y*100 + '%'; camWin.style.right = camWin.style.bottom = 'auto'; }
+  else camWin.style.left = camWin.style.top = camWin.style.right = camWin.style.bottom = '';
+  kick();
 }
 async function camStart(){
   camWin.hidden = false; camBtn.classList.add('on'); camLayout();
@@ -1040,10 +1048,11 @@ async function camStart(){
 }
 function camStop(){
   camStream && camStream.getTracks().forEach(t=>t.stop()); camStream = null;
-  camVideo.srcObject = null; camWin.hidden = true; camBtn.classList.remove('on');
+  camVideo.srcObject = null; camWin.hidden = true; camBtn.classList.remove('on'); camLayout();
 }
 camBtn.onclick = ()=> camStream || !camWin.hidden ? camStop() : camStart();
 document.getElementById('camClose').onclick = camStop;
+document.getElementById('camLayoutBtn').onclick = ()=>{ state.cam.layout = state.cam.layout === 'side' ? 'pip' : 'side'; camLayout(); saveSettings(); };
 document.getElementById('camFlip').onclick = ()=>{ state.cam.flip = !state.cam.flip; camLayout(); saveSettings(); };
 document.getElementById('camSize').onclick = ()=>{ state.cam.size = {s:'m', m:'l', l:'s'}[state.cam.size]; camLayout(); saveSettings(); };
 document.getElementById('camMatch').onclick = ()=>{
@@ -1055,7 +1064,7 @@ document.getElementById('camMatch').onclick = ()=>{
 {
   let drag = null;
   camWin.addEventListener('pointerdown', e=>{
-    if(e.target.closest('button')) return;
+    if(e.target.closest('button') || state.cam.layout === 'side') return;
     e.stopPropagation(); e.preventDefault();
     const r = camWin.getBoundingClientRect(), pr = camWin.parentElement.getBoundingClientRect();
     drag = {dx: e.clientX - r.left, dy: e.clientY - r.top, pr, w: r.width, h: r.height};
