@@ -200,6 +200,26 @@
   .song-sheet .bar.now{background:var(--on);color:#fff;border-color:var(--on)}
   .song-sheet .bar.now span+span{color:#d6f3f1}
   #songList,#tabList{display:flex;gap:4px;flex-wrap:wrap}
+  .tabs button small.beta{font-size:9px;font-weight:700;color:#fff;background:var(--accent2);border-radius:6px;padding:1px 4px;margin-left:3px;vertical-align:2px}
+  .betanote{font-size:12px;color:var(--sub);background:#fff5ef;border:1px solid #ffd9c9;border-radius:9px;padding:6px 9px;margin:0 0 8px}
+  .caporow{display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap}
+  .caporow span{font-size:12px;color:var(--sub);min-width:32px}
+  .caporow button{padding:3px 12px;font-size:16px;font-weight:800}
+  .caporow b{min-width:64px;text-align:center;font-size:15px}
+  .caporow small{font-size:11px;color:var(--dim)}
+  .lab.capo{color:#9fe7e3;font-size:12px}
+  .cambtn{right:80px}
+  .cambtn.on{background:var(--accent);color:#fff}
+  .camwin{position:absolute;bottom:30px;right:8px;z-index:6;border-radius:12px;overflow:hidden;background:#000;box-shadow:0 4px 18px rgba(0,0,0,.35);touch-action:none;cursor:move}
+  .camwin.s{width:22%} .camwin.m{width:32%} .camwin.l{width:46%}
+  @media (max-width:640px){.camwin.s{width:32%} .camwin.m{width:44%} .camwin.l{width:62%}}
+  .camwin video{display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:cover}
+  .camwin video.flip{transform:scaleX(-1)}
+  .camwin .cammsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:10px;color:#fff;font-size:12px;text-align:center;background:#000c}
+  .camwin .cammsg.on{display:flex}
+  .camctl{position:absolute;left:0;right:0;bottom:0;display:flex;gap:3px;justify-content:flex-end;padding:4px;background:linear-gradient(transparent,#0008)}
+  .camctl button{font-size:11px;padding:2px 6px;background:#fffd;border:0;border-radius:6px}
+  .camctl #camMatch{margin-right:auto}
   .tabsheet{overflow-x:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:2px 0;-webkit-overflow-scrolling:touch}
   .tabsheet svg{display:block;width:auto;max-width:none}
   .tabsheet .tl{stroke:#9aa7ab;stroke-width:1}
@@ -244,6 +264,18 @@
       <button class="vsel vsel2" id="angle2Btn" title="右の画面の向き" hidden>🎥 正面</button>
       <button class="gear" id="gearBtn" title="設定（背景・ギター・表示）" aria-label="設定">⚙</button>
       <button class="gear fsbtn" id="fsBtn" title="全画面" aria-label="全画面">⛶</button>
+      <button class="gear cambtn" id="camBtn" title="内カメラで自分の手を映して、3Dと見比べる" aria-label="カメラ">📷</button>
+      <!-- 内カメラの小窓（ドラッグで動かせる） -->
+      <div class="camwin m" id="camWin" hidden>
+        <video id="camVideo" playsinline muted autoplay></video>
+        <div class="cammsg" id="camMsg"></div>
+        <div class="camctl">
+          <button id="camMatch" title="3Dを、カメラに映る自分と同じ向き（正面・左右反転）にする">3Dを合わせる</button>
+          <button id="camFlip" title="カメラの左右反転">⇋</button>
+          <button id="camSize" title="大きさを変える">⤢</button>
+          <button id="camClose" title="カメラを止める">✕</button>
+        </div>
+      </div>
       <!-- 全画面の時だけ：3D画面の下にコードのボタンと再生ボタンを重ねる -->
       <div class="picker fsbar" id="fsBar">
         <div class="fsplay"><button id="fsName" class="chip" title="押すと 練習／曲デモ を切り替え"></button><button id="fsPlay" class="play">▶</button></div>
@@ -272,13 +304,15 @@
     <section class="card picker">
       <div class="row" id="rootRow"></div>
       <div class="row" id="typeRow"></div>
+      <div class="caporow"><span>カポ</span><button id="capoDown" aria-label="カポを下げる">−</button><b id="capoVal">なし</b><button id="capoUp" aria-label="カポを上げる">＋</button>
+        <small>押さえ方はそのまま、カポの分だけ高い音になります</small></div>
     </section>
 
     <section class="card">
       <nav class="tabs">
         <button data-tab="practice" class="on">練習</button>
         <button data-tab="songs">曲デモ</button>
-        <button data-tab="tabs">タブ譜</button>
+        <button data-tab="tabs">ソロ<small class="beta">開発中</small></button>
       </nav>
 
       <div class="tab on" id="tab-practice">
@@ -314,6 +348,7 @@
       </div>
 
       <div class="tab" id="tab-tabs">
+        <p class="betanote">🎁 <b>おまけ機能（開発中）</b>：タブ譜のメロディ（ソロ）を、左手と右手で弾いてみせます。指の選び方や手の形はまだ調整中で、不自然な所があります。</p>
         <div id="tabList"></div>
         <div class="song-info" id="tabInfo"></div>
         <div class="tabsheet" id="tabSheet"></div>

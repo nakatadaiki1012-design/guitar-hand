@@ -8,7 +8,7 @@ import { buildGuitar } from './guitar.js';
 import { createBackdrop } from './backdrop.js';
 import { loadHand, applyPose } from './handrig.js';
 import { rightHandPose, PICK_TIP } from './strum.js';
-import { slotCenter, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG, NSTR, STRUM_X, GTYPE, setGuitarType } from './geom.js';
+import { slotCenter, fretX, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG, NSTR, STRUM_X, GTYPE, setGuitarType } from './geom.js';
 import { STRING_NAMES, FINGER_COLORS } from './data.js';
 
 /* ギターは演奏する時のように立てて持っている：
@@ -55,7 +55,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
 
   // ギター（アコースティック／エレキ。1回作ったら取っておいて、切り替える時は入れ替えるだけ）
   const built = {};
-  let gtr = null, finishName = null;
+  let gtr = null, finishName = null, capoNow = 0;
   function setGuitar(type, finish){
     setGuitarType(type);
     if(gtr && gtr.type === GTYPE){ if(finish) gtr.setFinish(finishName = finish); return; }
@@ -64,6 +64,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     gtr.group.traverse(o=>{ if(o.material) o.material.envMapIntensity = 0.5; });
     scene.add(gtr.group);
     gtr.setFinish(finishName = finish);
+    gtr.setCapo(capoNow);
   }
   setGuitar(GTYPE);
 
@@ -144,7 +145,8 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     for(let s=0;s<NSTR;s++){
       const on = !!(pose.openStr && pose.openStr.includes(s));
       openSet[s].visible = on;
-      if(on) openSet[s].position.set(9, strY(s, 9), stringZ(9) + 1);
+      const ox = capoNow ? fretX(capoNow) + 7 : 9;   // カポがある時は、カポのすぐ先
+      if(on) openSet[s].position.set(ox, strY(s, ox), stringZ(ox) + 1);
     }
     const chord = pose.chord;
     for(let s=0;s<NSTR;s++){
@@ -303,7 +305,8 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     const P = p => { const q = project(camera, p, W, H); if(q && opts.mirror) q[0] = Wc - q[0]; return q; };
     const at = (q, cls, txt, style='') => { if(q && q[0]>-30 && q[0]<W-10 && q[1]>-30 && q[1]<H+30) html += `<div class="${cls}" style="left:${q[0].toFixed(1)}px;top:${q[1].toFixed(1)}px;${style}">${txt}</div>`; };
     const showLabels = !VIEWS[viewName].fixed;
-    if(showLabels) for(let n=1; n<=5; n++) at(P([slotCenter(n), -halfW(slotCenter(n))-8, 0]), 'lab fret', n+'<small>フレット</small>');
+    if(showLabels) for(let n=capoNow+1; n<=capoNow+5; n++) at(P([slotCenter(n), -halfW(slotCenter(n))-8, 0]), 'lab fret', n+'<small>フレット</small>');
+    if(showLabels && capoNow) at(P([fretX(capoNow)-5, -halfW(fretX(capoNow))-14, 6]), 'lab capo', 'カポ');
     if(showLabels) for(let s=0; s<NSTR; s++){
       const fr = pose.chord.frets[s], open = fr===0, mute = fr===-1;
       at(P([-9, strY(s,0), stringZ(0)+3]), 'lab str'+(open?' open':'')+(mute?' mute':''), STRING_NAMES[s]+(open?'<small>○</small>':mute?'<small>×</small>':''));
@@ -331,6 +334,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     setBackdrop: name => backdrop.set(name),
     setFinish: name => gtr.setFinish(finishName = name),
     setGuitar,
+    setCapo(n){ capoNow = n; gtr && gtr.setCapo(n); requestRender && requestRender(); },
     // 処理が重い端末向け：影を切る（いちど切ると戻さない）
     setShadows(on){
       if(key.castShadow === on) return;

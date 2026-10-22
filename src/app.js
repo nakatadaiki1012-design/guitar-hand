@@ -12,14 +12,33 @@ import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventCho
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
-               bg:'day', guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true};
+               bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true};
 // 設定は次に開いた時も同じになるように覚えておく（覚えられない端末ではそのまま）
-const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand'];
+const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam'];
 try{ const sv = JSON.parse(localStorage.getItem('guitarSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
 const saveSettings = () => { try{ localStorage.setItem('guitarSettings', JSON.stringify(Object.fromEntries(SAVED.map(k=>[k, state[k]])))); }catch(e){} };
 let view = null, rig = null;
 let poseFrom = null, poseTo = null, tweenStart = 0;
 let TWEEN_MS = 450, tweenDur = 450;
+
+/* =========================================================
+   カポ：コードの押さえ方（形）はそのまま、カポの分だけ上のフレットで押さえる。音もカポの分だけ高くなる
+   ・押さえるフレット：f → f＋カポ（0＝開放弦はカポが押さえる）
+   ・コード名は押さえ方の名前のまま。実際に鳴る音の名前は別に出す
+   ========================================================= */
+const capo = () => state.capo || 0;
+function shiftChord(c){
+  const k = capo(); if(!k || !c) return c;
+  return {...c, name: c.name + '@capo' + k, frets: c.frets.map(f => f > 0 ? f + k : f),
+          barre: c.barre ? {...c.barre, fret: c.barre.fret + k} : null};
+}
+const chordPose = name => computePose(shiftChord(typeof name === 'string' ? getChord(name) : name), view.rig);
+const SEMI = {'C':0,'D':2,'E♭':3,'E':4,'F':5,'G':7,'A':9,'B♭':10,'B':11};
+const NOTE_NM = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+function soundingName(name){
+  const [root, type] = splitName(name);
+  return NOTE_NM[(SEMI[root] + capo()) % 12] + type;
+}
 
 /* =========================================================
    縦のコード表
@@ -29,6 +48,7 @@ function diagramSVG(chord){
   const sx = i => L + i*W/(cols-1), sy = j => T + j*H/rows;
   let s = `<rect width="150" height="210" rx="10" fill="#faf8f3"/>`;
   s += `<text x="75" y="26" text-anchor="middle" font-size="24" font-weight="800" fill="#1b1410">${chord.name}</text>`;
+  if(capo()) s += `<text x="146" y="14" text-anchor="end" font-size="11" font-weight="700" fill="#0e9f9a">カポ${capo()}</text>`;
   for(let j=0;j<=rows;j++) s += `<line x1="${L}" x2="${L+W}" y1="${sy(j)}" y2="${sy(j)}" stroke="#555" stroke-width="${j?1.4:5}"/>`;
   for(let i=0;i<cols;i++){
     s += `<line x1="${sx(i)}" x2="${sx(i)}" y1="${T}" y2="${T+H}" stroke="#333" stroke-width="1.6"/>`;
@@ -60,9 +80,9 @@ function showStrip(names, soon=false){
   const key = names.join(',') + (soon ? '!' : '');
   if(key === stripKey) return; stripKey = key;
   chordCard.innerHTML = names.map((n,i)=>{
-    svgCache[n] ||= diagramSVG(getChord(n));
+    svgCache[n + '@' + capo()] ||= diagramSVG(getChord(n));
     const cls = 'cc' + (i===0 ? ' now' : '') + (i===1 && soon ? ' soon' : '');
-    return (i ? '<b class="arr">→</b>' : '') + `<div class="${cls}">${svgCache[n]}</div>`;
+    return (i ? '<b class="arr">→</b>' : '') + `<div class="${cls}">${svgCache[n + '@' + capo()]}</div>`;
   }).join('');
 }
 
@@ -108,7 +128,7 @@ function pluckBuffer(midi){
   bufCache[midi] = buf; return buf;
 }
 function playString(si, fret, when, vol){
-  const midi = STRING_MIDI[si] + fret;
+  const midi = STRING_MIDI[si] + fret + capo();
   const src = actx.createBufferSource(); src.buffer = pluckBuffer(midi);
   const g = actx.createGain();
   g.gain.setValueAtTime(0, when); g.gain.linearRampToValueAtTime(vol, when+0.004);
@@ -156,12 +176,12 @@ function setChord(name, animate=true){
   state.root = root; state.type = type;
   document.getElementById('chordName').textContent = name;
   const R = ROOTS.find(r=>r.id===root), T = TYPES.find(t=>t.id===type);
-  document.getElementById('chordReading').textContent = `${R.read}・${T.read}`;
+  document.getElementById('chordReading').textContent = `${R.read}・${T.read}` + (capo() ? `（カポ${capo()}・実際の音は ${soundingName(name)}）` : '');
   if(!playing()) showStrip([name]);
   updateButtons();
   if(!view) return;
   const now = performance.now();
-  const next = computePose(chord, view.rig);
+  const next = chordPose(chord);
   if(animate && poseTo){ poseFrom = currentPose(now); tweenStart = now; tweenDur = TWEEN_MS; }
   else poseFrom = null;
   poseTo = next; window.__pose = next;
@@ -299,7 +319,7 @@ function updateFs(){
   if(!fsOn) return;
   const at = activeTab();
   const run = at === 'practice' ? prog.running : at === 'songs' ? song.running : tabs.running;
-  fsName.textContent = at === 'practice' ? '練習：' + prog.list.join('→') : at === 'songs' ? '曲：' + SONG().title : 'タブ譜：' + TAB().title;
+  fsName.textContent = at === 'practice' ? '練習：' + prog.list.join('→') : at === 'songs' ? '曲：' + SONG().title : 'ソロ（開発中）：' + TAB().title;
   fsPlay.textContent = run ? '■ ストップ' : '▶ ' + (at === 'practice' ? 'スタート' : '演奏する');
 }
 function setFS(on){
@@ -447,7 +467,7 @@ function tickProg(){
 }
 function startProg(){
   ensureAudio(); if(song.running) stopSong(); stopTab();
-  if(view) for(const c of prog.list) computePose(getChord(c), view.rig);   // 手の形を先に計算
+  if(view) for(const c of prog.list) chordPose(c);   // 手の形を先に計算
   shownChord = '';
   prog.running = true;
   prog.e8 = eighth(+bpmEl.value);
@@ -569,7 +589,7 @@ function startSong(){
   ensureAudio(); stopProg(); stopTab();
   const sg = SONG();
   // 曲で使うコードの手の形を先に全部計算しておく（演奏中に引っかからないように）
-  if(view) for(const b of sg.bars) for(const [c] of b) computePose(getChord(c), view.rig);
+  if(view) for(const b of sg.bars) for(const [c] of b) chordPose(c);
   shownChord = '';
   song.e8 = eighth(+songBpm.value);
   const cin = sg.beats*2;
@@ -667,7 +687,8 @@ function tabEventPose(sg, i){
   const e = sg.events[i];
   sg.plan ||= fingerPlan(sg.events);
   const pl = sg.plan[i];
-  const pose = computeTabPose(eventChord(e), view.rig, e.P || 1, pl.hover, pl.grip, pl.home);
+  const k = capo(), hover = k ? Object.fromEntries(Object.entries(pl.hover).map(([f,[s,fr,l]])=>[f, [s, fr + k, l]])) : pl.hover;
+  const pose = computeTabPose(shiftChord(eventChord(e)), view.rig, (e.P || 1) + k, hover, pl.grip, pl.home);
   const open = e.notes.filter(n=>!n.f).map(n=>n.s);
   return open.length ? {...pose, openStr: open} : pose;
 }
@@ -675,7 +696,7 @@ function tabEventPose(sg, i){
 function showTabEvent(i, still=false){
   const sg = TAB(), e = sg.events[i]; if(!e) return;
   if(tabs.shown === i && !still) return; tabs.shown = i;
-  document.getElementById('chordName').textContent = e.notes.map(n=>noteName(n.m)).join('・');
+  document.getElementById('chordName').textContent = e.notes.map(n=>noteName(n.m + capo())).join('・');
   document.getElementById('chordReading').textContent = e.notes.map(noteLabel).join(' ／ ');
   const nx = sg.events[i+1];
   stripKey = '';
@@ -751,7 +772,7 @@ async function startTab(){
   const run = ++tabs.prep;
   for(let k=0;k<todo.length;k++){
     btn.textContent = `準備中 ${k}/${todo.length}`;
-    computeTabPose(todo[k][0], view.rig, todo[k][1], todo[k][2].hover, todo[k][2].grip, todo[k][2].home);
+    tabEventPose(sg, k);
     await new Promise(r=>setTimeout(r, 0));
     if(run !== tabs.prep) return;                                 // 準備中にストップや曲の変更があった
   }
@@ -830,7 +851,7 @@ let shownChord = '';
 function musicPose(pl, ph){
   const k = Math.floor(ph), cur = pl.chordAt(k);
   if(cur !== shownChord){ shownChord = cur; setChord(cur, false); }
-  let pose = computePose(getChord(cur), view.rig);
+  let pose = chordPose(cur);
   for(let j = k+1; j <= k+pl.spb && j < pl.end; j++){
     const nx = pl.chordAt(j);
     if(nx === cur) continue;
@@ -838,7 +859,7 @@ function musicPose(pl, ph){
     const dur = Math.min(0.32, pl.o.e8*2*0.9);              // 動かす時間（最大でも1拍弱）
     if(left < dur){
       const t = 1 - left/dur;
-      pose = blendPose(pose, computePose(getChord(nx), view.rig), t);
+      pose = blendPose(pose, chordPose(nx), t);
     }
     break;
   }
@@ -957,6 +978,7 @@ createView({
   view.onChange(kick);
   document.getElementById('loading')?.remove();
   view.setBackdrop(state.bg); view.setGuitar(state.guitar, state.finish); applyToggles();
+  view.setCapo(state.capo || 0);
   setChord(state.root+state.type, false);
   window.__ready = true;
   // 残りのコードの手の形も、ひまな時間に先に計算しておく（切り替えが引っかからないように）
@@ -964,9 +986,87 @@ createView({
   const first = new Set([...SONGS.flatMap(sg=>sg.bars.flat().map(c=>c[0])), ...PROGRESSIONS.flatMap(p=>p.chords)]);
   const rest = [...first, ...Object.keys(CHORDS).filter(c=>!first.has(c))];
   const idle = window.requestIdleCallback || (fn=>setTimeout(()=>fn({timeRemaining:()=>8}), 30));
-  const work = dl => { while(rest.length && dl.timeRemaining() > 4) computePose(getChord(rest.shift()), view.rig); if(rest.length) idle(work); };
+  const work = dl => { while(rest.length && dl.timeRemaining() > 4) chordPose(rest.shift()); if(rest.length) idle(work); };
   idle(work);
 }).catch(err=>{
   console.error(err);
   document.getElementById('mainWrap').innerHTML = '<p style="padding:30px;color:#c9b6a3">この端末では3D表示が使えません（WebGLが無効です）。</p>';
 });
+
+/* ---------- カポの切り替え ---------- */
+const capoVal = document.getElementById('capoVal');
+function applyCapo(){
+  state.capo = Math.max(0, Math.min(9, state.capo || 0));
+  capoVal.textContent = state.capo ? state.capo + 'フレット' : 'なし';
+  document.getElementById('capoDown').disabled = !state.capo;
+  document.getElementById('capoUp').disabled = state.capo >= 9;
+  saveSettings();
+  if(view) view.setCapo(state.capo);
+  stripKey = '';
+  if(tabs.running || prog.running || song.running) return;
+  if(activeTab() === 'tabs' && tabs.shown >= 0) showTabEvent(tabs.shown, true);
+  else setChord(chordName(), true);
+}
+document.getElementById('capoDown').onclick = ()=>{ if(prog.running) stopProg(); if(song.running) stopSong(); stopTab(); state.capo--; applyCapo(); };
+document.getElementById('capoUp').onclick = ()=>{ if(prog.running) stopProg(); if(song.running) stopSong(); stopTab(); state.capo++; applyCapo(); };
+applyCapo();
+
+/* ---------- 内カメラの小窓：自分の手を映して、3Dの手と見比べながら練習する ----------
+   ・カメラの映像はこの端末の中だけで表示する（どこにも送らない・保存しない）
+   ・小窓はドラッグで好きな場所へ。大きさは 小・中・大。左右反転（鏡のように見える）も切り替えられる
+   ・「3Dを合わせる」：3Dを正面（向かい合った向き）＋左右反転にして、鏡に映った自分と同じ向きにする */
+const camBtn = document.getElementById('camBtn'), camWin = document.getElementById('camWin');
+const camVideo = document.getElementById('camVideo'), camMsg = document.getElementById('camMsg');
+state.cam = {size:'m', flip:true, x:null, y:null, ...(state.cam || {})};
+let camStream = null;
+function camLayout(){
+  camWin.classList.remove('s','m','l'); camWin.classList.add(state.cam.size);
+  camVideo.classList.toggle('flip', state.cam.flip);
+  if(state.cam.x != null){ camWin.style.left = state.cam.x*100 + '%'; camWin.style.top = state.cam.y*100 + '%'; camWin.style.right = camWin.style.bottom = 'auto'; }
+}
+async function camStart(){
+  camWin.hidden = false; camBtn.classList.add('on'); camLayout();
+  camMsg.className = 'cammsg on'; camMsg.textContent = 'カメラを準備中…';
+  try{
+    if(!navigator.mediaDevices?.getUserMedia) throw new Error('nosupport');
+    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'user', width:{ideal:1280}, height:{ideal:720}}, audio:false});
+    camVideo.srcObject = camStream; await camVideo.play().catch(()=>{});
+    camMsg.className = 'cammsg';
+  }catch(e){
+    camMsg.textContent = e.message === 'nosupport' ? 'この画面ではカメラが使えません（https のページで開いてください）'
+      : e.name === 'NotAllowedError' ? 'カメラの使用が許可されませんでした。ブラウザの設定でカメラを許可してください'
+      : e.name === 'NotFoundError' ? 'カメラが見つかりませんでした' : 'カメラを開けませんでした';
+  }
+}
+function camStop(){
+  camStream && camStream.getTracks().forEach(t=>t.stop()); camStream = null;
+  camVideo.srcObject = null; camWin.hidden = true; camBtn.classList.remove('on');
+}
+camBtn.onclick = ()=> camStream || !camWin.hidden ? camStop() : camStart();
+document.getElementById('camClose').onclick = camStop;
+document.getElementById('camFlip').onclick = ()=>{ state.cam.flip = !state.cam.flip; camLayout(); saveSettings(); };
+document.getElementById('camSize').onclick = ()=>{ state.cam.size = {s:'m', m:'l', l:'s'}[state.cam.size]; camLayout(); saveSettings(); };
+document.getElementById('camMatch').onclick = ()=>{
+  angle1 = 'front'; document.getElementById('angleBtn').textContent = '🎥 ' + VIEWS.front.label;
+  if(view) view.setView('front');
+  state.mirror = true; applyToggles(); saveSettings(); kick();
+};
+// ドラッグで動かす（ボタンの上ではドラッグしない）
+{
+  let drag = null;
+  camWin.addEventListener('pointerdown', e=>{
+    if(e.target.closest('button')) return;
+    e.stopPropagation(); e.preventDefault();
+    const r = camWin.getBoundingClientRect(), pr = camWin.parentElement.getBoundingClientRect();
+    drag = {dx: e.clientX - r.left, dy: e.clientY - r.top, pr, w: r.width, h: r.height};
+    camWin.setPointerCapture(e.pointerId);
+  });
+  camWin.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    const {pr, w, h} = drag;
+    const x = Math.min(pr.width - w, Math.max(0, e.clientX - pr.left - drag.dx)), y = Math.min(pr.height - h, Math.max(0, e.clientY - pr.top - drag.dy));
+    state.cam.x = x / pr.width; state.cam.y = y / pr.height; camLayout();
+  });
+  const end = ()=>{ if(drag){ drag = null; saveSettings(); } };
+  camWin.addEventListener('pointerup', end); camWin.addEventListener('pointercancel', end);
+}

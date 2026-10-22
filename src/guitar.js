@@ -543,7 +543,9 @@ export function buildGuitar(){
     return segs;
   });
   const SADDLE_COMP = lp ? [4.1,3.5,3.1,2.5,2.1,1.7] : electric ? [3.2,2.6,2.2,1.4,1.0,0.4] : [3.4,2.8,2.2,3.0,2.0,1.0];
-  function setStrings(strInfo){
+  // カポで押さえられた所：弦はカポのゴムでフレットに押しつけられる
+  let capoN = 0;
+  function setStrings(strInfo, cp = capoN){
     for(let s=0;s<NSTR;s++){
       const r = Math.max(0.2, STRING_R[s]), segs = strings[s];
       const y = x => strY(s,x);
@@ -551,6 +553,7 @@ export function buildGuitar(){
       const pts = [headW(...posts[s])];
       if(strat && s >= 4){ const t = 72/(-posts[s][0]); pts.push(headW(-72, y(0)+(posts[s][1]-y(0))*t, 6.2)); }
       pts.push([0, y(0), stringZ(0)+r]);
+      if(cp > 0){ const xc = fretX(cp) - 5; pts.push([xc, y(xc), FRET_TOP+r+0.5], [fretX(cp), y(fretX(cp)), FRET_TOP+r]); }
       const info = strInfo && strInfo[s];
       if(info) pts.push([info.contact, y(info.contact), FRET_TOP+r+0.15], [info.fret, y(info.fret), FRET_TOP+r]);
       pts.push([sx, y(sx), stringZ(sx)+r]);
@@ -587,5 +590,26 @@ export function buildGuitar(){
     if(strat){ const col = f.guard === 'black' ? '#141213' : '#f2efe6'; pickupMat.color.set(col); knobMat.color.set(col); }
     if(lpParts) lpParts.hwMat.color.set(f.hw === 'gold' ? '#dcb45e' : '#e6e6ea');
   }
-  return {group: g, setStrings, setFinish, type};
+  /* ---------- カポ（ゴムのパッドで全部の弦を押さえ、ばねの腕でネックの裏からはさむ） ---------- */
+  const capoG = new THREE.Group(); capoG.visible = false; g.add(capoG);
+  const capoMetal = std({color:'#232326', metalness:0.4, roughness:0.42});
+  const rubber = std({color:'#0d0d0d', roughness:0.9});
+  function setCapo(n){
+    capoN = n;
+    capoG.clear(); capoG.visible = n > 0;
+    if(n > 0){
+      const xc = fretX(n) - 5, hw = halfW(xc), dp = NECK_DEPTH(xc), back = -FB_T - dp;
+      const ad = (geo, mat, f) => add(geo, mat, f, capoG);
+      ad(new THREE.BoxGeometry(7, 2*hw + 6, 4), rubber, m=>{ m.position.set(xc, 0, FRET_TOP + 2.4); });            // ゴムのパッド
+      ad(new THREE.BoxGeometry(10, 2*hw + 12, 5), capoMetal, m=>{ m.position.set(xc, 2, FRET_TOP + 6.8); });       // 上の棒
+      const arm = new THREE.CatmullRomCurve3([[xc, hw+7, FRET_TOP+7], [xc, hw+12, -2], [xc, hw+8, back*0.55], [xc, hw*0.45, back-7], [xc, -hw*0.2, back-8]].map(p=>new THREE.Vector3(...p)));
+      ad(new THREE.TubeGeometry(arm, 24, 3.6, 10), capoMetal);                                                      // ネックの1弦側をまわる腕
+      ad(new THREE.BoxGeometry(11, 2*hw + 18, 6), capoMetal, m=>{ m.position.set(xc, -6, back - 11); m.rotation.x = -0.18; });   // 裏のにぎり（ばね）
+      ad(new THREE.BoxGeometry(6, 2*hw*0.8, 3), rubber, m=>{ m.position.set(xc, 0, back - 3.5); });                // 裏のゴム
+    }
+    setStrings(lastInfo, n);
+  }
+  let lastInfo = null;
+  const setStringsKeep = info => { lastInfo = info; setStrings(info); };
+  return {group: g, setStrings: setStringsKeep, setFinish, setCapo, type};
 }
