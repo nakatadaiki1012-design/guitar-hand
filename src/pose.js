@@ -52,6 +52,33 @@ function chain2(L, th, p2, p3){
   return out;
 }
 
+/* 待っている指（メロディ）：力を抜いた形（つけ根 約40°・第二関節 約50°）を基本に、
+   「弦に触れない高さ」「だいたい自分のフレット・弦の上」を保つように、曲げ角を少しだけ変える。
+   決まった点に指先を合わせないので、近すぎる点に合わせて「く」の字に縮こまることがない */
+function relaxedFinger(f, Lbone, K, T, H, lift){
+  const R = RAD[f], c = COUPLE[f];
+  const L = [Lbone[0], Lbone[1], Lbone[2]+PAD_EXT];
+  const d = sub(T,K); let e = sub(d, mul(H.N, dot(d,H.N)));             // つけ根 → 待つ場所 の向き（手のひらの向きと直角な成分）
+  e = vlen(e) > 1e-6 ? norm(e) : norm(sub(H.F, mul(H.N, dot(H.F,H.N))));
+  const toW = ([u,v]) => add(K, add(mul(e,u), mul(H.N,v)));
+  let best = null;
+  for(let th=-36; th<=24; th+=6) for(let p2=25; p2<=85; p2+=6){
+    const pts = chain2(L, th*DEG, p2*DEG, c*p2*DEG).map(toW);
+    const pad = pts[3];
+    let cost = ((th+12)*(th+12) + (p2-55)*(p2-55))/900;                   // 楽な形（少しそらせてから、第二関節で曲げる）からの違い
+    const need = stringZ(pad[0]) + PAD_R + lift;                           // 指の腹の高さ（弦から lift mm）
+    cost += Math.pow(Math.max(0, need - pad[2]), 2)*0.6 + Math.pow(Math.max(0, pad[2] - need - 6), 2)*0.03;
+    cost += Math.pow((pad[0]-T[0])/12, 2)*0.8 + Math.pow((pad[1]-T[1])/14, 2)*0.5;
+    for(let s=0;s<3;s++) for(let t=0;t<=1.001;t+=0.25){                   // 弦に触れない
+      const P = lerp3(pts[s],pts[s+1],t), r = lerp(R[s],R[s+1],t);
+      if(Math.abs(P[1]) < halfW(P[0]) + r*0.5){ const cl = P[2]-r-(stringZ(P[0])+1.0); if(cl<0) cost += cl*cl*2; }
+    }
+    if(!best || cost < best.cost) best = {cost, pts};
+  }
+  const out = padToTip(best.pts, Lbone[2]); out.pen = 0;
+  return out;
+}
+
 /* 1本の指：第二関節の曲げ角を二分探索で決め、第一関節の連動比率をいくつか試して
    「指先が真上から当たる」「他の弦に触れない」「関節が無理な角度にならない」ものを選ぶ */
 function solveFinger(f, Lbone, K, T, H, kind){
@@ -188,8 +215,12 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
       addc('reach'+f, pd*pd*0.5);
     } else {
       mode = 'hover';   // 使わない指：軽く曲げて弦の少し上に浮かせる
-      if(opts.hoverT && opts.hoverT[f]){                     // メロディ：決まった場所（さっき押さえていた所の少し上など）で待つ
+      if(opts.hoverT && opts.hoverT[f]){                     // メロディ：決まった場所（さっき押さえていた所の少し上など）の近くで、力を抜いて待つ
         T = opts.hoverT[f];
+        pts = relaxedFinger(f, L, K[f], T, H, opts.hoverT[f].lift ?? 3);
+        const axis = norm(cross(sub(pts[3],pts[0]), H.N));
+        fingers[f] = {mode, pts, string, axis};
+        continue;
       } else if(opts.hoverP){                                // メロディ：自分のフレットの上で、次に押さえる準備をして待つ
         const x = fretX(opts.hoverP + f - 1) - 5;
         T = [x, strY(opts.hoverS, x) + 2, FRET_TOP + PAD_R + 6];
@@ -332,7 +363,7 @@ export function computeTabPose(chord, rig, P=1, hover=null, grip='spread', home=
     const hoverT = {};
     if(hover) for(const f in hover){
       const [s, fr, lift] = hover[f], x = fretX(fr) - 4.5;
-      hoverT[f] = [x, strY(s, x) + 1.0, stringZ(x) + 1 + PAD_R + lift];
+      hoverT[f] = [x, strY(s, x) + 1.0, stringZ(x) + 1 + PAD_R + lift]; hoverT[f].lift = lift;
     }
     const opts = {anc: an.anc, hoverP: P, hoverS: ss.length ? ss.reduce((a,b)=>a+b,0)/ss.length : 2.5, hoverT, style: GRIPS[grip]};
     // 手の位置（つけ根）は構えのまま。斜めの形では、人差し指のつけ根を支点に手の傾きだけ少し変えて指をのばす
@@ -398,6 +429,51 @@ function poseFromHand(hb, chord, rig){
 }
 
 /* ---------- コードチェンジのアニメーション ---------- */
+/* ---------- メロディ（ソロ）の指の動き ----------
+   コードチェンジの blendPose と違って、山なりに持ち上げない：
+   ・押さえに行く指は、待っていた所からまっすぐ弦へ下りる（速め）
+   ・離す指は、少し遅れて・ゆっくり持ち上がる（押さえた指が下りてから）
+   ・ほかの指は、動く指につられて少しだけ動く（隣の指ほど大きく）
+   ・手首・手のひらはそのまま（ポジションが変わる時だけ、ゆっくり移る） */
+const sstep = t => t <= 0 ? 0 : t >= 1 ? 1 : t*t*(3-2*t);
+export function blendTab(A, B, t){
+  const kind = {};
+  for(let f=1; f<=4; f++){
+    const a = A.fingers[f].mode, b = B.fingers[f].mode;
+    kind[f] = (b === 'press' || b === 'barre') && a === 'hover' ? 'press' : (a === 'press' || a === 'barre') && b === 'hover' ? 'release' : 'other';
+  }
+  const moving = [1,2,3,4].filter(f => kind[f] !== 'other');
+  const tf = {};
+  for(let f=1; f<=4; f++){
+    if(kind[f] === 'press') tf[f] = sstep(t/0.85);                          // 先に下りる
+    else if(kind[f] === 'release') tf[f] = sstep((t-0.15)/0.85);            // 少し遅れて上がる
+    else {
+      // つられて動く：隣が動く時だけ、途中まで一緒に動いてから戻る（最終的には B の形）
+      const near = moving.reduce((m,g)=>Math.max(m, [0,0.35,0.12,0.04][Math.abs(g-f)] || 0), 0);
+      tf[f] = sstep(t); tf['sym'+f] = near;
+    }
+  }
+  const handT = sstep(t);
+  const joints = A.joints.map((ja,k)=>{
+    const jb = B.joints[k];
+    let u = handT;
+    if(jb.f>=1 && jb.f<=4) u = tf[jb.f];
+    let pos = lerp3(ja.pos, jb.pos, u);
+    // つられる動き：隣の指が下りる（上がる）向きに、ほんの少し動いて戻る
+    if(jb.f>=1 && jb.f<=4 && tf['sym'+jb.f] && jb.i>=2){
+      const g = moving.reduce((best,m)=>Math.abs(m-jb.f) < Math.abs(best-jb.f) ? m : best, moving[0]);
+      const dir = kind[g] === 'press' ? -1 : 1;
+      pos = add(pos, mul([0,0,1], dir * tf['sym'+jb.f] * [0,0,1.5,2.5,3][jb.i] * Math.sin(Math.PI*Math.min(1,t))));
+    }
+    if(jb.f>=1 && jb.f<=4 && kind[jb.f] === 'release' && jb.i>=2) pos = add(pos, mul([0,0,1], 1.5*Math.sin(Math.PI*Math.min(1,t))));
+    return {...jb, pos, fwd:norm(lerp3(ja.fwd, jb.fwd, u)), dorsal:norm(lerp3(ja.dorsal, jb.dorsal, u))};
+  });
+  const fingers = {};
+  for(let f=1; f<=4; f++) fingers[f] = {...B.fingers[f], mode: t < 0.5 ? A.fingers[f].mode : B.fingers[f].mode,
+    pts: A.fingers[f].pts.map((p,i)=>lerp3(p, B.fingers[f].pts[i], tf[f]))};
+  return {joints, fingers, str: t < 0.6 ? A.str : B.str, openStr: t < 0.6 ? A.openStr : B.openStr, chord: B.chord, target: lerp3(A.target, B.target, handT)};
+}
+
 export function blendPose(A, B, t){
   const ease = t<.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2, lift = Math.sin(Math.PI*t);
   const moved = {};

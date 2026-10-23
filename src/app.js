@@ -3,7 +3,7 @@
    ========================================================= */
 import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, resolveChord, PROGRESSIONS, CHORDS, SONGS, TAB_SONGS } from './data.js';
 import { parseChordSheet, cleanTitle, bookmarkletCode } from './chordsheet.js';
-import { computePose, computeTabPose, blendPose, HAND_CFG, clearPoseCache } from './pose.js';
+import { computePose, computeTabPose, blendPose, blendTab, HAND_CFG, clearPoseCache } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
 import { BACKDROPS } from './backdrop.js';
@@ -818,8 +818,8 @@ function tabPose(sg, b){
     const nx = tabEventPose(sg, j);
     const left = (ev[j].t - b)*tabs.bs, gap = (ev[j].t - ev[i].t)*tabs.bs;
     const shift = (ev[j].P || 1) !== (ev[i].P || 1);
-    const dur = Math.min(shift ? 0.25 : 0.13, Math.max(0.05, gap*0.75));
-    if(left < dur) pose = blendPose(pose, nx, 1 - left/dur);
+    const dur = Math.min(shift ? 0.28 : 0.17, Math.max(0.06, gap*0.8));
+    if(left < dur) pose = (shift ? blendPose : blendTab)(pose, nx, 1 - left/dur);
   }
   return pose;
 }

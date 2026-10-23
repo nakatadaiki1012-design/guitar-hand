@@ -333,8 +333,11 @@ export function fingerPlan(events){
     for(let k=1;k<=4;k++){
       if(pressing.has(k)) continue;
       const l = last[k];
-      if(l) hover[k] = [l.s, l.f, played.has(l.s) ? 4 : 2];
-      else hover[k] = [home, P + k - 1, grip === 'diag' && k === 4 ? 9 : 4];
+      // 隣の指が押さえている時は、つられて少し低く待つ
+      const nb = (pressing.has(k-1) || pressing.has(k+1)) ? -0.8 : 0;
+      if(l) hover[k] = [l.s, l.f, (played.has(l.s) ? 4 : 2.2) + nb];
+      else if(grip === 'diag') hover[k] = [home, P + Math.min(k - 1, 2), 3.5 + (k === 4 ? 1.5 : 0) + nb];   // 斜めの形：小指は薬指のそばで待つ
+      else hover[k] = [home, P + k - 1, 3.5 + nb];
     }
     plan.push({hover, grip, home});
   }
