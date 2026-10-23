@@ -267,6 +267,12 @@
   .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
   .msg{font-size:12px;color:var(--sub);margin:6px 0 2px}
   .msg.ok{color:var(--accent)} .msg.bad{color:var(--accent2)}
+  .imp-sec{border-top:1px solid var(--line);padding:8px 0 4px;margin-top:6px}
+  .imp-sec>b{font-size:13px}
+  .bmlink{display:inline-block;padding:7px 14px;border-radius:10px;background:var(--accent);color:#fff;font-weight:800;text-decoration:none;cursor:grab;box-shadow:var(--shadow)}
+  .howto{font-size:12px;color:var(--sub);margin-top:4px} .howto summary{cursor:pointer;color:var(--accent);font-weight:700}
+  .howto p{margin:4px 0}
+  .imp-row+textarea{margin-top:6px}
   .chordCard .tabnow{background:#faf8f3;border-radius:10px;padding:6px 9px;font-size:12px;line-height:1.45;color:#1b1410;max-width:170px}
   .chordCard .tabnow b{display:block;font-size:11px;color:#0e9f9a}
   .chordCard .tabnow.next{opacity:.8}
@@ -344,7 +350,8 @@
       </nav>
 
       <div class="tab on" id="tab-practice">
-        <div class="field"><span>進行</span><select id="progSel"></select></div>
+        <div class="field"><span>進行</span><select id="progSel"></select><button id="impDel" class="chip" hidden title="取り込んだこの曲を消す">🗑</button></div>
+        <p class="msg" id="impMsg" hidden></p>
         <div class="field custom" id="customRow" hidden><span></span><input id="customProg" type="text" autocomplete="off" spellcheck="false"
           placeholder="例：C Am F G7（1つ＝1小節）"><small id="customMsg"></small></div>
         <div class="prog-chords" id="progChords"></div>
@@ -359,6 +366,29 @@
           <div class="beats" id="beats"><div class="beat"></div><div class="beat"></div><div class="beat"></div><div class="beat"></div></div>
         </div>
         <p class="cap">4拍ごとにコードが変わります。4拍目に次のコードが光ったら指の準備を。右手は弾かない拍も止めずに振り続けます。</p>
+        <details class="import" id="progImport">
+          <summary>📥 コード譜から曲を取り込む（U-FRET など）</summary>
+          <div class="imp-sec">
+            <b>① いちばん手軽：取り込みボタン</b>
+            <p class="msg">コード譜のページで押すだけで、コード進行がこのアプリに入ります。歌詞は読み取りません。最初に1回だけ、ブラウザのお気に入り（ブックマーク）に登録してください。</p>
+            <div class="imp-row"><a id="bmLink" class="bmlink" href="#" draggable="true">🎸 ギターに送る</a><button class="chip" id="bmCopy">ボタンのコードをコピー</button></div>
+            <details class="howto"><summary>登録のしかた</summary>
+              <p><b>パソコン</b>：上の「🎸 ギターに送る」を、ブラウザのお気に入りバーへドラッグ。コード譜のページを開いて、そのお気に入りを押す。</p>
+              <p><b>iPhone（Safari）</b>：「ボタンのコードをコピー」→ どのページでもよいので共有ボタンから「ブックマークを追加」→ ブックマーク一覧で「編集」→ そのブックマークのURLを消してコピーしたコードを貼り付け。コード譜のページで、そのブックマークを開く。</p>
+              <p><b>Android（Chrome）</b>：「ボタンのコードをコピー」→ ☆でブックマークを追加 → ブックマークの編集でURLをコピーしたコードに置きかえ、名前を「ギター」などに。コード譜のページで、アドレスバーにその名前を打って出てくるブックマークを押す。</p>
+            </details>
+            <p class="msg" id="bmNote" hidden></p>
+          </div>
+          <div class="imp-sec">
+            <b>② コピーして取り込む</b>
+            <p class="msg">コード譜のページで文字を全部選んでコピーしてから、このボタンを押します。</p>
+            <div class="imp-row"><button class="chip" id="impClip">📋 クリップボードから取り込む</button></div>
+            <textarea id="impPaste" rows="5" spellcheck="false" placeholder="または、ここにコード譜を貼り付け（歌詞が混ざっていてもOK。[C]歌詞[G]歌詞 の形も読めます）"></textarea>
+            <div class="imp-row"><input type="text" id="impName" placeholder="曲名（なくてもOK）"><button class="chip" id="impGo">読み込む</button></div>
+            <p class="msg" id="impResult"></p>
+          </div>
+          <p class="msg">読み取るのはコード名だけで、歌詞は保存しません。押さえ方がないコード（分数コードやテンションなど）は近いコードで代用し、その旨を表示します。1コード＝1小節として練習します。取り込んだ曲はこの端末に残ります。</p>
+        </details>
       </div>
 
       <div class="tab" id="tab-songs">

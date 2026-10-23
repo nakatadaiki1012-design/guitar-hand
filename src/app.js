@@ -1,7 +1,8 @@
 /* =========================================================
    ギター・ハンドガイド（画面の操作・音・説明）
    ========================================================= */
-import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, PROGRESSIONS, CHORDS, SONGS, TAB_SONGS } from './data.js';
+import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, resolveChord, PROGRESSIONS, CHORDS, SONGS, TAB_SONGS } from './data.js';
+import { parseChordSheet, cleanTitle, bookmarkletCode } from './chordsheet.js';
 import { computePose, computeTabPose, blendPose, HAND_CFG, clearPoseCache } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
@@ -45,11 +46,14 @@ function soundingName(name){
    ========================================================= */
 function diagramSVG(chord){
   const L=22, T=40, W=106, H=150, cols=NSTR, rows=5;
-  const sx = i => L + i*W/(cols-1), sy = j => T + j*H/rows;
+  // 高いフレットのコードは、いちばん低い押さえる所を表の1段目にして「4fr」のように書く
+  const pressed = chord.frets.filter(f=>f>0), base = pressed.length && Math.max(...pressed) > rows ? Math.min(...pressed) : 1;
+  const sx = i => L + i*W/(cols-1), sy = j => T + j*H/rows, row = fr => fr - base + 1;
   let s = `<rect width="150" height="210" rx="10" fill="#faf8f3"/>`;
+  if(base > 1) s += `<text x="${L-4}" y="${(sy(0)+sy(1))/2+4}" text-anchor="end" font-size="10" font-weight="700" fill="#555">${base}fr</text>`;
   s += `<text x="75" y="26" text-anchor="middle" font-size="24" font-weight="800" fill="#1b1410">${chord.name}</text>`;
   if(capo()) s += `<text x="146" y="14" text-anchor="end" font-size="11" font-weight="700" fill="#0e9f9a">カポ${capo()}</text>`;
-  for(let j=0;j<=rows;j++) s += `<line x1="${L}" x2="${L+W}" y1="${sy(j)}" y2="${sy(j)}" stroke="#555" stroke-width="${j?1.4:5}"/>`;
+  for(let j=0;j<=rows;j++) s += `<line x1="${L}" x2="${L+W}" y1="${sy(j)}" y2="${sy(j)}" stroke="#555" stroke-width="${j || base > 1 ? 1.4 : 5}"/>`;
   for(let i=0;i<cols;i++){
     s += `<line x1="${sx(i)}" x2="${sx(i)}" y1="${T}" y2="${T+H}" stroke="#333" stroke-width="1.6"/>`;
     s += `<text x="${sx(i)}" y="${T+H+16}" text-anchor="middle" font-size="11" fill="#555">${STRING_NAMES[i]}</text>`;
@@ -57,17 +61,17 @@ function diagramSVG(chord){
     if(chord.frets[i]<0) s += `<path d="M${sx(i)-4.5} ${T-14.5}l9 9m0 -9l-9 9" stroke="#333" stroke-width="1.8"/>`;
   }
   if(chord.barre){
-    const b = chord.barre, y = (sy(b.fret-1)+sy(b.fret))/2;
+    const b = chord.barre, y = (sy(row(b.fret)-1)+sy(row(b.fret)))/2;
     s += `<rect x="${sx(b.from)-9}" y="${y-9}" width="${sx(b.to)-sx(b.from)+18}" height="18" rx="9" fill="${FINGER_COLORS[1]}"/>`;
   }
   chord.frets.forEach((fr,i)=>{
     if(!(fr > 0)) return;
     const f = chord.fingers[i];
     if(chord.barre && f===1 && fr===chord.barre.fret) {
-      s += `<text x="${sx(i)}" y="${(sy(fr-1)+sy(fr))/2+4.5}" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1410">1</text>`;
+      s += `<text x="${sx(i)}" y="${(sy(row(fr)-1)+sy(row(fr)))/2+4.5}" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1410">1</text>`;
       return;
     }
-    const y = (sy(fr-1)+sy(fr))/2;
+    const y = (sy(row(fr)-1)+sy(row(fr)))/2;
     s += `<circle cx="${sx(i)}" cy="${y}" r="9.5" fill="${FINGER_COLORS[f]}" stroke="#1b1410" stroke-width="1.2"/>`;
     s += `<text x="${sx(i)}" y="${y+4.5}" text-anchor="middle" font-size="12" font-weight="800" fill="#1b1410">${f}</text>`;
   });
@@ -379,23 +383,13 @@ function retime(o, bpm){                                    // テンポ・速�
 /* ---------- 進行練習 ---------- */
 const prog = {idx:0, running:false, list:PROGRESSIONS[0].chords, pos:0, timer:null, t0:0, e8:0.5, nextSlot:0, pat:2, hl:null};
 const progSel = document.getElementById('progSel'), progChords = document.getElementById('progChords');
-progSel.innerHTML = PROGRESSIONS.map((p,i)=>`<option value="${i}">${p.name}（${p.chords.join('→')}）</option>`).join('')
-  + `<option value="custom">✏️ 自分で作る</option>`;
 /* 自分で作る進行：コード名をスペース（または → , ・）で区切って書く。1つ＝1小節。
    Bb・A# → B♭、am → Am、M7 → maj7 のような書き方も受け付ける */
 const customRow = document.getElementById('customRow'), customIn = document.getElementById('customProg'), customMsg = document.getElementById('customMsg');
 let customList = ['C','Am','F','G7'];
 try{ const sv = JSON.parse(localStorage.getItem('guitarCustomProg') || 'null'); if(Array.isArray(sv) && sv.length) customList = sv; }catch(e){}
 customIn.value = customList.join(' ');
-function normChord(t){
-  const m = t.match(/^([a-gA-G])([#♯b♭]?)(.*)$/); if(!m) return null;
-  let root = m[1].toUpperCase(), acc = m[2], rest = m[3];
-  if(acc === 'b' || acc === '♭') root += '♭';
-  else if(acc === '#' || acc === '♯') root = ({C:'D♭', D:'E♭', F:'G♭', G:'A♭', A:'B♭'})[root] || root+'♯';
-  rest = rest.replace(/^M7$|^Maj7$|^MAJ7$/, 'maj7').replace(/^min$/, 'm').replace(/^M$/, '');
-  const name = root + rest;
-  return getChord(name) ? name : null;
-}
+function normChord(t){ const r = resolveChord(t); return r ? r.name : null; }
 function readCustom(){
   const toks = customIn.value.split(/[\s,、→\-・|]+/).filter(Boolean);
   const ok = [], bad = [];
@@ -413,13 +407,96 @@ function readCustom(){
   }
 }
 customIn.oninput = readCustom;
+/* ---------- 取り込んだ曲（コード譜から） ----------
+   imported：[{name, chords（書かれていたままのコード名）, capo}]。この端末に残す */
+let imported = [];
+try{ const sv = JSON.parse(localStorage.getItem('guitarImportedProgs') || '[]'); if(Array.isArray(sv)) imported = sv.filter(x=>x && Array.isArray(x.chords)); }catch(e){}
+const saveImported = () => { try{ localStorage.setItem('guitarImportedProgs', JSON.stringify(imported)); }catch(e){} };
+const impMsg = document.getElementById('impMsg'), impDel = document.getElementById('impDel');
+function buildProgSel(keep){
+  progSel.innerHTML = PROGRESSIONS.map((p,i)=>`<option value="${i}">${p.name}（${p.chords.join('→')}）</option>`).join('')
+    + (imported.length ? `<optgroup label="取り込んだ曲">` + imported.map((p,i)=>`<option value="imp:${i}">📥 ${p.name}</option>`).join('') + `</optgroup>` : '')
+    + `<option value="custom">✏️ 自分で作る</option>`;
+  if(keep != null) progSel.value = keep;
+}
+buildProgSel();
+// 書かれていたコード名 → このアプリのコード名。代用した物・読めなかった物も返す
+function resolveList(raw){
+  const names = [], subs = [], bad = [];
+  for(const c of raw){ const r = resolveChord(c); if(!r){ bad.push(c); continue; } names.push(r.name); if(r.sub) subs.push(`${r.sub}→${r.name}`); }
+  return {names, subs: [...new Set(subs)], bad: [...new Set(bad)]};
+}
+function showImpMsg(sg){
+  const {subs, bad, names} = resolveList(sg.chords);
+  let t = `${names.length}小節` + (sg.capo ? `・カポ${sg.capo}` : '');
+  if(subs.length) t += `　代用：${subs.join('、')}`;
+  if(bad.length) t += `　読めなかった：${bad.join('、')}`;
+  impMsg.textContent = t; impMsg.hidden = false;
+}
 progSel.onchange = ()=>{
-  const custom = progSel.value === 'custom';
-  customRow.hidden = !custom;
-  prog.list = custom ? customList : PROGRESSIONS[+progSel.value].chords;
+  const custom = progSel.value === 'custom', imp = progSel.value.startsWith('imp:');
+  customRow.hidden = !custom; impDel.hidden = !imp; impMsg.hidden = !imp;
+  if(imp){
+    const sg = imported[+progSel.value.slice(4)];
+    prog.list = resolveList(sg.chords).names; showImpMsg(sg);
+    if(sg.capo != null && sg.capo !== state.capo){ state.capo = sg.capo; applyCapo(); }
+  } else prog.list = custom ? customList : PROGRESSIONS[+progSel.value].chords;
+  if(!prog.list.length) prog.list = ['C'];
   prog.idx = progSel.value; prog.pos = 0; stopProg(); renderProg(); setChord(prog.list[0]);
   if(custom){ readCustom(); customIn.focus(); }
 };
+impDel.onclick = ()=>{
+  if(!progSel.value.startsWith('imp:')) return;
+  imported.splice(+progSel.value.slice(4), 1); saveImported(); buildProgSel('0'); progSel.onchange();
+};
+function addImportedProg(sheet, fallbackTitle){
+  const {names, bad} = resolveList(sheet.chords);
+  if(!names.length) throw new Error(sheet.chords.length ? `コードは見つかりましたが、どれも押さえ方がありません（${bad.slice(0,6).join('、')}）` : 'コードが見つかりませんでした');
+  const name = cleanTitle(sheet.title) || fallbackTitle || `取り込んだ曲 ${imported.length + 1}`;
+  imported.push({name, chords: sheet.chords, capo: sheet.capo || 0}); saveImported();
+  buildProgSel('imp:' + (imported.length - 1));
+  document.querySelector('[data-tab="practice"]').click();
+  progSel.onchange();
+  return name;
+}
+// アプリのURLの後ろに #import=… が付いていたら（取り込みボタンから開いた時）、その曲を入れる
+function importFromHash(){
+  const m = location.hash.match(/^#import=(.+)$/); if(!m) return;
+  try{
+    const d = JSON.parse(decodeURIComponent(m[1]));
+    const name = addImportedProg({title: d.t, chords: d.c, capo: d.k}, '取り込んだ曲');
+    document.getElementById('impResult').textContent = `「${name}」を取り込みました`;
+  }catch(e){ console.error(e); }
+  history.replaceState(null, '', location.pathname + location.search);
+}
+/* 取り込みの画面：取り込みボタン（ブックマークレット）・クリップボード・貼り付け */
+{
+  const appUrl = location.origin + location.pathname;
+  const isWeb = /^https?:/.test(location.protocol);
+  const bm = document.getElementById('bmLink'), bmNote = document.getElementById('bmNote'), res = document.getElementById('impResult');
+  const code = bookmarkletCode(appUrl);
+  bm.href = code;
+  bm.onclick = e => { e.preventDefault(); bmNote.hidden = false; bmNote.textContent = 'このボタンは、お気に入りに登録してからコード譜のページで押します（ここで押しても何も起きません）'; };
+  if(!isWeb){ bmNote.hidden = false; bmNote.textContent = '取り込みボタンは、ネットで公開したページ（https://…）で開いた時に使えます。'; }
+  document.getElementById('bmCopy').onclick = async ()=>{
+    try{ await navigator.clipboard.writeText(code); bmNote.hidden = false; bmNote.textContent = 'コピーしました。ブックマークのURLに貼り付けてください'; }
+    catch(e){ prompt('このコードをコピーして、ブックマークのURLに貼り付けてください', code); }
+  };
+  const fail = e => { res.className = 'msg bad'; res.textContent = '取り込めませんでした：' + (e.message || e); };
+  const take = (text, title) => {
+    try{ const name = addImportedProg(parseChordSheet(text), title); res.className = 'msg ok'; res.textContent = `「${name}」を取り込みました`; }
+    catch(e){ fail(e); }
+  };
+  document.getElementById('impClip').onclick = async ()=>{
+    try{
+      if(!navigator.clipboard?.readText) throw new Error('この画面ではクリップボードを読めません。下の欄に貼り付けてください');
+      const text = await navigator.clipboard.readText();
+      if(!text.trim()) throw new Error('クリップボードが空です。コード譜をコピーしてから押してください');
+      take(text, document.getElementById('impName').value.trim());
+    }catch(e){ fail(e); }
+  };
+  document.getElementById('impGo').onclick = ()=> take(document.getElementById('impPaste').value, document.getElementById('impName').value.trim());
+}
 const patSel = document.getElementById('patSel');
 patSel.innerHTML = PATTERNS.map((p,i)=>`<option value="${i}">${p.name}</option>`).join('');
 patSel.value = 2;
@@ -1010,6 +1087,8 @@ function applyCapo(){
 document.getElementById('capoDown').onclick = ()=>{ if(prog.running) stopProg(); if(song.running) stopSong(); stopTab(); state.capo--; applyCapo(); };
 document.getElementById('capoUp').onclick = ()=>{ if(prog.running) stopProg(); if(song.running) stopSong(); stopTab(); state.capo++; applyCapo(); };
 applyCapo();
+importFromHash();   // 取り込みボタンから開いた時（画面の準備がすべて終わってから）
+window.addEventListener('hashchange', importFromHash);   // すでに開いている画面に、取り込みボタンから送られて来た時
 
 /* ---------- 内カメラの小窓：自分の手を映して、3Dの手と見比べながら練習する ----------
    ・カメラの映像はこの端末の中だけで表示する（どこにも送らない・保存しない）

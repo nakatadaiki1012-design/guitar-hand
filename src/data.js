@@ -12,9 +12,11 @@ export const FINGER_NAMES = ['','人差し指','中指','薬指','小指'];
 export const FINGER_COLORS= ['','#ff6b6b','#ffb84d','#4dc3ff','#b48cff'];
 
 export const ROOTS = [
-  {id:'C', read:'シー'},{id:'D', read:'ディー'},{id:'E♭',read:'イーフラット'},{id:'E', read:'イー'},
-  {id:'F', read:'エフ'},{id:'G', read:'ジー'},{id:'A', read:'エー'},{id:'B♭',read:'ビーフラット'},{id:'B', read:'ビー'}
+  {id:'C', read:'シー'},{id:'C♯',read:'シーシャープ'},{id:'D', read:'ディー'},{id:'E♭',read:'イーフラット'},{id:'E', read:'イー'},
+  {id:'F', read:'エフ'},{id:'F♯',read:'エフシャープ'},{id:'G', read:'ジー'},{id:'G♯',read:'ジーシャープ'},{id:'A', read:'エー'},
+  {id:'B♭',read:'ビーフラット'},{id:'B', read:'ビー'}
 ];
+export const ROOT_SEMI = {'C':0,'C♯':1,'D':2,'E♭':3,'E':4,'F':5,'F♯':6,'G':7,'G♯':8,'A':9,'B♭':10,'B':11};
 export const TYPES = [
   {id:'',    label:'メジャー',  read:'メジャー'},
   {id:'m',   label:'m',        read:'マイナー'},
@@ -22,7 +24,14 @@ export const TYPES = [
   {id:'m7',  label:'m7',       read:'マイナーセブンス'},
   {id:'maj7',label:'maj7',     read:'メジャーセブンス'},
   {id:'sus4',label:'sus4',     read:'サスフォー'},
-  {id:'6',   label:'6',        read:'シックス'}
+  {id:'6',   label:'6',        read:'シックス'},
+  {id:'sus2',label:'sus2',     read:'サスツー'},
+  {id:'add9',label:'add9',     read:'アドナインス'},
+  {id:'9',   label:'9',        read:'ナインス'},
+  {id:'7sus4',label:'7sus4',   read:'セブンスサスフォー'},
+  {id:'dim', label:'dim',      read:'ディミニッシュ'},
+  {id:'aug', label:'aug',      read:'オーギュメント'},
+  {id:'m7♭5',label:'m7♭5',     read:'マイナーセブンスフラットファイブ'}
 ];
 export const B = (fret,from,to)=>({fret,finger:1,from,to});
 const X = -1;
@@ -53,6 +62,56 @@ export const CHORDS = {
   'B':[[X,2,4,4,4,2],[0,1,2,3,4,1],B(2,1,5)], 'Bm':[[X,2,4,4,3,2],[0,1,3,4,2,1],B(2,1,5)], 'B7':[[X,2,1,2,0,2],[0,2,1,3,0,4]],
   'Bm7':[[X,2,4,2,3,2],[0,1,3,1,2,1],B(2,1,5)], 'Bmaj7':[[X,2,4,3,4,2],[0,1,3,2,4,1],B(2,1,5)], 'Bsus4':[[X,2,4,4,5,2],[0,1,2,3,4,1],B(2,1,5)]
 };
+
+// 開放弦を使う、ほかの種類のコード
+Object.assign(CHORDS, {
+  'Csus2':[[X,3,0,0,1,3],[0,3,0,0,1,4]], 'Dsus2':[[X,X,0,2,3,0],[0,0,0,1,2,0]], 'Gsus2':[[3,0,0,0,3,3],[2,0,0,0,3,4]],
+  'Cadd9':[[X,3,2,0,3,0],[0,2,1,0,3,0]], 'Gadd9':[[3,2,0,2,0,3],[2,1,0,3,0,4]], 'Aadd9':[[X,0,2,4,2,0],[0,0,1,3,2,0]],
+  'Eadd9':[[0,2,2,1,0,2],[0,2,3,1,0,4]], 'Fadd9':[[X,X,3,2,1,3],[0,0,3,2,1,4]],
+  'E9':[[0,2,0,1,0,2],[0,2,0,1,0,3]], 'A9':[[X,0,2,4,2,3],[0,0,1,4,2,3]],
+  'E7sus4':[[0,2,0,2,0,0],[0,2,0,3,0,0]], 'A7sus4':[[X,0,2,0,3,0],[0,0,2,0,3,0]], 'D7sus4':[[X,X,0,2,1,3],[0,0,0,2,1,3]],
+  'Am7♭5':[[X,0,1,0,1,X],[0,0,1,0,2,0]], 'Bm7♭5':[[X,2,3,2,3,X],[0,1,3,2,4,0]], 'Em7♭5':[[0,1,0,0,3,0],[0,1,0,0,3,0]],
+  'Daug':[[X,X,0,3,3,2],[0,0,0,2,3,1]], 'Caug':[[X,3,2,1,1,0],[0,4,3,1,1,0],B(1,3,4)], 'Gaug':[[3,2,1,0,0,3],[3,2,1,0,0,4]],
+  'Ddim':[[X,X,0,1,0,1],[0,0,0,1,0,2]], 'Edim':[[0,1,2,0,2,0],[0,1,2,0,3,0]], 'Adim':[[X,0,1,2,1,2],[0,0,1,3,2,4]],
+});
+
+/* =========================================================
+   すべての根音のコードを、セーハの「動かせる形」から作る
+   ・E型（根音が6弦）：E・Em・E7・Em7・Emaj7・Esus4・E7sus4・E9 の形を、根音のフレットまで上げる
+   ・A型（根音が5弦）：A・Am・A7・Am7・Amaj7・Asus4・Asus2・Am7♭5 の形を上げる
+   ・D型（根音が4弦）：dim・aug（同じ形が3〜4フレットおきにくり返すので、いちばん低い所を使う）
+   指番号は、セーハが人差し指（1）、残りはフレットの低い順（同じなら太い弦から）に 2・3・4
+   ========================================================= */
+const EFORM = {'':[0,2,2,1,0,0], 'm':[0,2,2,0,0,0], '7':[0,2,0,1,0,0], 'm7':[0,2,0,0,0,0], 'maj7':[0,2,1,1,0,0],
+               'sus4':[0,2,2,2,0,0], '7sus4':[0,2,0,2,0,0], '9':[0,2,0,1,0,2]};
+const AFORM = {'':[X,0,2,2,2,0], 'm':[X,0,2,2,1,0], '7':[X,0,2,0,2,0], 'm7':[X,0,2,0,1,0], 'maj7':[X,0,2,1,2,0],
+               'sus4':[X,0,2,2,3,0], 'sus2':[X,0,2,2,0,0], 'm7♭5':[X,0,1,0,1,X]};
+const DFORM = {'dim':[X,X,0,1,0,1], 'aug':[X,X,0,3,3,2]};
+function movable(shape, r, barre){
+  const frets = shape.map(f => f < 0 ? -1 : f + r);
+  const fingers = frets.map(()=>0);
+  if(barre) frets.forEach((f,s)=>{ if(f === r) fingers[s] = 1; });
+  const rest = frets.map((f,s)=>[f,s]).filter(([f,s])=>f > 0 && !fingers[s]).sort((a,b)=>a[0]-b[0] || a[1]-b[1]);
+  rest.forEach(([f,s],i)=>{ fingers[s] = Math.min(4, (barre ? 2 : 1) + i); });
+  const out = [frets, fingers];
+  if(barre){ const ss = frets.map((f,s)=>s).filter(s=>frets[s] >= 0); out.push(B(r, ss[0], ss[ss.length-1])); }
+  return out;
+}
+for(const root in ROOT_SEMI){
+  const R = ROOT_SEMI[root];
+  const cands = t => {
+    const c = [];
+    if(EFORM[t]){ const r = (R - 4 + 12) % 12; if(r > 0) c.push([r, EFORM[t], true]); }
+    if(AFORM[t]){ const r = (R - 9 + 12) % 12; if(r > 0) c.push([r, AFORM[t], true]); }
+    if(DFORM[t]){ let r = (R - 2 + 12) % 12; const step = t === 'dim' ? 3 : 4; while(r - step >= 0) r -= step; c.push([r, DFORM[t], false]); }
+    return c.sort((a,b)=>a[0]-b[0]);
+  };
+  for(const t of ['', 'm', '7', 'm7', 'maj7', 'sus4', 'sus2', '7sus4', '9', 'm7♭5', 'dim', 'aug']){
+    if(CHORDS[root + t]) continue;
+    const c = cands(t)[0]; if(!c) continue;
+    CHORDS[root + t] = movable(c[1], c[0], c[2]);
+  }
+}
 
 export function getChord(name){
   const c = CHORDS[name]; if(!c) return null;
@@ -159,3 +218,39 @@ export const TAB_SONGS = [
    note:'1弦のメロディ＋2弦・3弦の開放の3連符。1拍目は6弦（または5弦）のベースと同時に。5小節目からは高いポジションへ',
    tab:'[6-0 1-7]/3 2-0/3 3-0/3 1-7/3 2-0/3 3-0/3 1-7/3 2-0/3 3-0/3 | [6-0 1-7]/3 2-0/3 3-0/3 1-5/3 2-0/3 3-0/3 1-3/3 2-0/3 3-0/3 | [6-0 1-3]/3 2-0/3 3-0/3 1-2/3 2-0/3 3-0/3 1-0/3 2-0/3 3-0/3 | [6-0 1-0]/3 2-0/3 3-0/3 1-3/3 2-0/3 3-0/3 1-7/3 2-0/3 3-0/3 | [6-0 1-12]/3 2-0/3 3-0/3 1-12/3 2-0/3 3-0/3 1-12/3 2-0/3 3-0/3 | [6-0 1-12]/3 2-0/3 3-0/3 1-10/3 2-0/3 3-0/3 1-8/3 2-0/3 3-0/3 | [5-0 1-8]/3 2-1/3 3-2/3 1-7/3 2-1/3 3-2/3 1-5/3 2-1/3 3-2/3 | [5-0 1-5]/3 2-1/3 3-2/3 1-7/3 2-1/3 3-2/3 1-8/3 2-1/3 3-2/3 | [6-0 1-7]/3 2-0/3 3-0/3 1-7/3 2-0/3 3-0/3 1-7/3 2-0/3 3-0/3 | [6-0 1-7]/3 2-0/3 3-0/3 1-8/3 2-0/3 3-0/3 1-7/3 2-0/3 3-0/3 | [5-0 1-5]/3 2-1/3 3-2/3 1-5/3 2-1/3 3-2/3 1-5/3 2-1/3 3-2/3 | [6-0 1-0 2-0 3-0]*3'},
 ];
+
+/* =========================================================
+   コード名の読み取り（コード譜からの取り込み・自分で作る進行）
+   いろいろな書き方をこのアプリの名前に直す。押さえ方がないコードは、近いコードで代用する
+   返り値：{name: アプリのコード名, sub: 代用した時のもとの名前（代用していなければ null）}。コードでなければ null
+   ========================================================= */
+const ROOT_ALIAS = {'C#':'C♯','Db':'C♯','D#':'E♭','Eb':'E♭','F#':'F♯','Gb':'F♯','G#':'G♯','Ab':'G♯','A#':'B♭','Bb':'B♭','E#':'F','Fb':'E','B#':'C','Cb':'B'};
+const TYPE_ALIAS = [
+  [/^(maj|M|△|Δ)7$/, 'maj7'], [/^(maj|M|△|Δ)9$/, 'maj7*'], [/^(M|maj|△|Δ)$/, ''], [/^(min|mi|-)$/, 'm'], [/^(min|mi|-)7$/, 'm7'],
+  [/^m7[-♭b]5$|^m7\(?[♭b]5\)?$|^ø7?$/, 'm7♭5'], [/^(°|o|dim)7?$/, 'dim'], [/^(\+|aug|\+5|#5)$/, 'aug'],
+  [/^sus$/, 'sus4'], [/^7sus$/, '7sus4'], [/^(add2|add9|\(add9\)|2)$/, 'add9'], [/^(6\/9|69|6\(9\))$/, '6*'],
+  [/^9$/, '9'], [/^m9$/, 'm7*'], [/^(7\(9\)|7\(13\)|7\(?[♭b#]9\)?|7\(?[♭b#]13\)?|11|13|7\(11\)|9\(13\)|7\(9,13\))$/, '7*'],
+  [/^(aug7|7\+5|7#5|7\(#5\)|7\(\+5\))$/, '7*'], [/^(mM7|m\(M7\)|mmaj7|m\(maj7\)|m△7)$/, 'm7*'], [/^m6$/, 'm*'],
+  [/^(m7\(9\)|m9|m11|m7\(11\))$/, 'm7*'], [/^(maj7\(9\)|M7\(9\)|maj7\(#11\))$/, 'maj7*'], [/^(sus4\(9\)|9sus4|7sus4\(9\))$/, '7sus4*'],
+];
+const FALLBACK = {'6':'', 'add9':'', 'sus2':'', '9':'7', '7sus4':'sus4', 'm7♭5':'m7', 'aug':'', 'dim':'m', 'maj7':'', 'm7':'m', '7':'', 'sus4':''};
+export function resolveChord(raw){
+  if(!raw) return null;
+  let t = String(raw).normalize('NFKC').trim().replace(/[♯]/g, '#').replace(/[♭]/g, 'b');
+  if(/^[\(\[].*[\)\]]$/.test(t)) t = t.slice(1, -1);               // [C] や (Am7) のかっこを外す
+  t = t.replace(/6\/9$/, '69');                                     // 6/9 は分数コードではない
+  if(/^N\.?C\.?$/i.test(t)) return null;
+  const m = t.match(/^([A-G])([#b]?)([^/]*)(?:\/([A-G][#b]?))?$/); if(!m) return null;
+  const root = ROOT_ALIAS[m[1] + m[2]] || (m[1] + m[2]);
+  if(!(root in ROOT_SEMI)) return null;
+  let type = m[3], sub = false;
+  for(const [re, to] of TYPE_ALIAS) if(re.test(type)){ type = to.replace('*', ''); sub = sub || to.endsWith('*'); break; }
+  if(m[4]) sub = true;                                            // 分数コード（ベースの指定）は上のコードだけで代用
+  if(!CHORDS[root + type]){
+    let tp = type, guard = 0;
+    while(!CHORDS[root + tp] && guard++ < 5){ if(!(tp in FALLBACK)) return null; tp = FALLBACK[tp]; }
+    if(!CHORDS[root + tp]) return null;
+    sub = true; type = tp;
+  }
+  return {name: root + type, sub: sub ? String(raw).trim() : null};
+}
