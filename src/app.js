@@ -3,6 +3,7 @@
    ========================================================= */
 import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, resolveChord, PROGRESSIONS, CHORDS, SONGS, TAB_SONGS } from './data.js';
 import { parseChordSheet, cleanTitle, bookmarkletCode } from './chordsheet.js';
+import { TIERS, DETECTED, QUALITY_LEVEL, setQualityLevel } from './quality.js';
 import { computePose, computeTabPose, blendPose, blendTab, HAND_CFG, clearPoseCache } from './pose.js';
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
@@ -288,6 +289,10 @@ function applyGuitar(){
 choiceRow('optGuitar', Object.entries(GUITARS).map(([k,gt])=>[k, gt.label]), 'guitar', ()=>{ if(prog.running) stopProg(); if(song.running) stopSong(); stopTab(); applyGuitar(); });
 finishRow();
 choiceRow('optRight', RMODES, 'rightMode', ()=>{});
+// 軽さ（画質）：変えると読み込み直す
+state.qlevel = QUALITY_LEVEL;
+choiceRow('optQuality', [['auto', `自動（この端末：${TIERS[DETECTED.tier].label}）`], ...Object.entries(TIERS).map(([k,t])=>[k, t.label])], 'qlevel',
+  ()=>{ setQualityLevel(state.qlevel); location.reload(); });
 // オン・オフのボタン
 const TOGGLES = [['split','▥ 2画面'],['leftHand','左手'],['ghost','半透明'],['badges','指番号'],['mirror','左右反転'],['chart','コード表']];
 const showEl = document.getElementById('optShow');

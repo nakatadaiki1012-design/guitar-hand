@@ -10,6 +10,7 @@ import { loadHand, applyPose } from './handrig.js';
 import { rightHandPose, PICK_TIP } from './strum.js';
 import { slotCenter, fretX, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG, NSTR, STRUM_X, GTYPE, setGuitarType } from './geom.js';
 import { STRING_NAMES, FINGER_COLORS } from './data.js';
+import { Q } from './quality.js';
 
 /* ギターは演奏する時のように立てて持っている：
    空（上）は -y（6弦の側）、指板の正面（客席）は +z、ボディは +x（弾く人から見て右）
@@ -26,9 +27,9 @@ const UP = [0,-1,0];
 
 export async function createView({mainCanvas, mainOverlay, onTap}){
   const mkRenderer = canvas => {
-    const r = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, powerPreference:'high-performance'});
-    r.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.5));
-    r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFShadowMap;   // やわらかい影より軽い方式
+    const r = new THREE.WebGLRenderer({canvas, antialias:Q.aa, alpha:false, powerPreference:'high-performance'});
+    r.setPixelRatio(Math.min(window.devicePixelRatio||1, Q.pr));
+    r.shadowMap.enabled = Q.shadow > 0; r.shadowMap.type = THREE.PCFShadowMap;   // やわらかい影より軽い方式
     r.shadowMap.autoUpdate = false;                                       // 影は、手やギターが動いた時だけ描き直す（カメラを回すだけなら前の影のまま）
     r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
     r.outputColorSpace = THREE.SRGBColorSpace;
@@ -46,8 +47,8 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   const key = new THREE.DirectionalLight('#fff6ea', 2.6);
   key.position.set(-160, -420, 380);   // 空の高い所（-y）・客席側（+z）から
   key.castShadow = true;
-  const small = Math.min(window.innerWidth, window.innerHeight) < 700 || (window.devicePixelRatio || 1) > 2;   // スマホは影を少し粗くして軽く
-  key.shadow.mapSize.set(small ? 1024 : 2048, small ? 1024 : 2048);
+  key.shadow.mapSize.set(Q.shadow || 512, Q.shadow || 512);
+  if(!Q.shadow) key.castShadow = false;                                   // 「軽い」では影なし
   let shadowDirty = true;                                                 // 影を描き直す必要があるか
   const touch = () => { shadowDirty = true; requestRender && requestRender(); };
   Object.assign(key.shadow.camera, {left:-620, right:620, top:620, bottom:-620, near:50, far:1800});
@@ -261,7 +262,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   }
   const project = (cam, p, W, H) => { const v = new THREE.Vector3(...p).project(cam); if(v.z > 1) return null; return [(v.x+1)/2*W, (1-v.y)/2*H]; };
 
-  const basePR = Math.min(window.devicePixelRatio||1, 1.5);
+  const basePR = Math.min(window.devicePixelRatio||1, Q.pr);
   let curPR = basePR, lastPose = null, lastGhost = null, lastLeft = null;
   function render(pose, opts){
     // 動いている間は解像度を少し下げる（重い端末でカクカクしないように）

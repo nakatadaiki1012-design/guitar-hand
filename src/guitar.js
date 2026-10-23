@@ -13,6 +13,8 @@ import * as THREE from 'three';
 import { GTYPE, NSTR, fretX, slotCenter, halfW, strY, STRING_R, stringZ, FRET_TOP, NECK_DEPTH, FB_T,
          BODY_X0, BODY_LEN, BODY_DEPTH, BODY_TOP, FB_END, HEAD_LEN, NUM_FRETS, SCALE_LEN, G, DEG } from './geom.js';
 import { STRAT_BODY, STRAT_GUARD, LP_BODY, LP_GUARD, LP_HEAD, LP_TUNERS, LP_CARVE } from './shapes.js';
+import { Q } from './quality.js';
+const SEG = Q.seg, TX = Q.tex;   // 軽さの設定：曲線の分割数・木目の絵の大きさ
 
 /* ---------- 木目テクスチャ（その場で描く） ---------- */
 function rng(seed){ return ()=>{ seed=(seed*16807)%2147483647; return (seed-1)/2147483646; }; }
@@ -42,7 +44,7 @@ function canvasTex(c, repeat=true){
   return t;
 }
 function woodTexture(o){
-  const w = o.w || 1024, h = o.h || 256;
+  const w = Math.round((o.w || 1024)*TX), h = Math.round((o.h || 256)*TX);
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   drawGrain(c.getContext('2d'), w, h, o);
   return canvasTex(c);
@@ -50,7 +52,7 @@ function woodTexture(o){
 /* 表板の絵：木目（またはぬりつぶし）＋サンバースト（ふちが濃く、まん中が明るいぼかし）。
    ボディをちょうど囲む四角に1枚で貼る */
 function topTexture(f, box){
-  const w = 1024, h = 640;
+  const w = Math.round(1024*TX), h = Math.round(640*TX);
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d');
   if(f.top) drawGrain(g, w, h, {...f.top, lines:(f.top.lines||140)*2});
@@ -210,12 +212,12 @@ export function buildGuitar(){
   if(!electric){
     const plate = 3;
     const holePts = []; for(let i=0;i<72;i++){ const a=-i/72*Math.PI*2; holePts.push(new THREE.Vector2(SH_X+Math.cos(a)*SH_R, Math.sin(a)*SH_R)); }
-    const topGeo = boxUV(new THREE.ExtrudeGeometry(shapeOf(outline,[holePts]), {depth:plate, bevelEnabled:true, bevelThickness:0.6, bevelSize:0.6, bevelSegments:2, curveSegments:24}), box);
+    const topGeo = boxUV(new THREE.ExtrudeGeometry(shapeOf(outline,[holePts]), {depth:plate, bevelEnabled:true, bevelThickness:0.6, bevelSize:0.6, bevelSegments:2, curveSegments:SEG}), box);
     add(topGeo, topMat, m=>{ m.position.z = BODY_TOP - plate - 0.6; });
     const backGeo = uvScale(new THREE.ExtrudeGeometry(shapeOf(outline), {depth:plate, bevelEnabled:true, bevelThickness:0.6, bevelSize:0.6, bevelSegments:2}), 1/400, 1/80);
     add(backGeo, backMat, m=>{ m.position.z = BODY_TOP - BODY_DEPTH + 0.6; });
     const inner = insetPath(outline, 2.5);
-    const sideGeo = uvScale(new THREE.ExtrudeGeometry(shapeOf(outline,[inner.slice().reverse()]), {depth:BODY_DEPTH-2*plate, bevelEnabled:false, curveSegments:24}), 1/400, 1/80);
+    const sideGeo = uvScale(new THREE.ExtrudeGeometry(shapeOf(outline,[inner.slice().reverse()]), {depth:BODY_DEPTH-2*plate, bevelEnabled:false, curveSegments:SEG}), 1/400, 1/80);
     add(sideGeo, sideMat, m=>{ m.position.z = BODY_TOP - BODY_DEPTH + plate; });
     // バインディング（縁の白いライン）
     const bindIn = insetPath(outline, 2.2);
@@ -233,7 +235,7 @@ export function buildGuitar(){
     for(let a=150; a>=12; a-=6){ const t = a*DEG; arc.push([SH_X+Math.cos(t)*rr, Math.sin(t)*rr]); }
     const guardPts = [...arc, [SH_X+66,52],[SH_X+70,84],[SH_X+52,113],[SH_X+12,126],[SH_X-30,118],[SH_X-58,96]];
     const gp = ccw(guardPts.map(([x,y])=>new THREE.Vector2(x,y)));
-    add(new THREE.ExtrudeGeometry(shapeOf(gp), {depth:0.6, bevelEnabled:true, bevelThickness:0.2, bevelSize:0.4, bevelSegments:1, curveSegments:12}), guardMat,
+    add(new THREE.ExtrudeGeometry(shapeOf(gp), {depth:0.6, bevelEnabled:true, bevelThickness:0.2, bevelSize:0.4, bevelSegments:1, curveSegments:SEG}), guardMat,
         m=>{ m.position.z = BODY_TOP + 0.05; m.castShadow = false; });
     /* ブリッジ（ローズウッド）・サドル（骨）・ブリッジピン */
     const bl = 152, bw = 30, bh = 9;
@@ -255,11 +257,11 @@ export function buildGuitar(){
   } else if(strat){
     // ボディは1枚板。ふちを丸く削ってある
     const r = 6;
-    const bodyGeo = boxUV(new THREE.ExtrudeGeometry(shapeOf(outline), {depth:BODY_DEPTH-2*r, bevelEnabled:true, bevelThickness:r, bevelSize:r, bevelOffset:-r, bevelSegments:5, curveSegments:24}), box);
+    const bodyGeo = boxUV(new THREE.ExtrudeGeometry(shapeOf(outline), {depth:BODY_DEPTH-2*r, bevelEnabled:true, bevelThickness:r, bevelSize:r, bevelOffset:-r, bevelSegments:5, curveSegments:SEG}), box);
     add(bodyGeo, topMat, m=>{ m.position.z = BODY_TOP - BODY_DEPTH + r; });
     // ピックガード（3層：表・白・黒の線が縁に見える）
     const gp = smoothLoop(STRAT_GUARD, 260);
-    add(new THREE.ExtrudeGeometry(shapeOf(gp), {depth:1.6, bevelEnabled:true, bevelThickness:0.4, bevelSize:0.8, bevelSegments:2, curveSegments:12}), guardMat,
+    add(new THREE.ExtrudeGeometry(shapeOf(gp), {depth:1.6, bevelEnabled:true, bevelThickness:0.4, bevelSize:0.8, bevelSegments:2, curveSegments:SEG}), guardMat,
         m=>{ m.position.z = BODY_TOP + 0.4; });
     add(new THREE.ExtrudeGeometry(shapeOf(insetPath(gp,-1.4)), {depth:1.2, bevelEnabled:false}), std({color:'#111', roughness:0.5}), m=>{ m.position.z = BODY_TOP + 0.05; m.castShadow = false; });
     const gTop = BODY_TOP + 2.4;
@@ -312,7 +314,7 @@ export function buildGuitar(){
     const addB = (geo, mat, f) => add(geo, mat, f, bodyG);
     const shiftX = geo => { geo.translate(-XJ, 0, 0); return geo; };
     // マホガニーの胴（縁は少し丸める）
-    addB(shiftX(uvScale(new THREE.ExtrudeGeometry(shapeOf(outline), {depth:RIM-4, bevelEnabled:true, bevelThickness:2, bevelSize:2, bevelOffset:-2, bevelSegments:3, curveSegments:24}), 1/400, 1/80)),
+    addB(shiftX(uvScale(new THREE.ExtrudeGeometry(shapeOf(outline), {depth:RIM-4, bevelEnabled:true, bevelThickness:2, bevelSize:2, bevelOffset:-2, bevelSegments:3, curveSegments:SEG}), 1/400, 1/80)),
          sideMat, m=>{ m.position.z = -RIM + 2; });
     // アーチ状の表板：縁から内側への輪を、決めた高さでつないでいく（縁の近くは少しくぼんでから盛り上がる）
     const hOf = [0, 0.15, 1.1, 3.4, 6.6, 9.4, 11.5];
@@ -399,7 +401,7 @@ export function buildGuitar(){
     }
     // ピックガード（クリーム色。ボディから浮かせて、1弦側に取りつける）
     const gp = smoothLoop(LP_GUARD, 160);
-    add(new THREE.ExtrudeGeometry(shapeOf(gp), {depth:1.4, bevelEnabled:true, bevelThickness:0.3, bevelSize:0.6, bevelSegments:1, curveSegments:12}), guardMat,
+    add(new THREE.ExtrudeGeometry(shapeOf(gp), {depth:1.4, bevelEnabled:true, bevelThickness:0.3, bevelSize:0.6, bevelSegments:1, curveSegments:SEG}), guardMat,
         m=>{ m.geometry.translate(-XJ, 0, 0); m.position.z = hOf[6] + 4.5; }, bodyG);
     // ストラップピン（おしり）
     add(new THREE.CylinderGeometry(3.5,4.5,9,16), hwMat, m=>{ m.rotation.z = Math.PI/2; m.position.set(maxX - XJ + 3, 0, -RIM/2); }, bodyG);
@@ -504,7 +506,7 @@ export function buildGuitar(){
       s = shapeOf(smoothLoop([[4,-21.5],[-24,-27],[-60,-34],[-110,-37],[-150,-39],[-178,-41],[-193,-33],[-197,-16],[-191,-1],[-176,9],
                                [-152,14],[-124,9],[-98,4],[-74,6],[-48,14],[-22,20.5],[4,21.5]], 160));
     }
-    add(new THREE.ExtrudeGeometry(s, {depth:T-2.4, bevelEnabled:true, bevelThickness:1.2, bevelSize:1.2, bevelSegments:3, curveSegments:20}), headWood,
+    add(new THREE.ExtrudeGeometry(s, {depth:T-2.4, bevelEnabled:true, bevelThickness:1.2, bevelSize:1.2, bevelSegments:3, curveSegments:SEG}), headWood,
         m=>{ m.position.set(-HX, 0, -T+1.2); }, head);
     // ペグ
     const button = electric ? std({color: lp ? '#eef0dc' : '#e9e4d6', roughness:0.3, transparent: lp, opacity: lp ? 0.92 : 1}) : chrome;
