@@ -1004,7 +1004,8 @@ function loop(now){
   const handMoving = !!poseFrom;
   const active = !!pl || !!oneShot || tabOn;
   const showRight = state.rightMode === 'always' || (state.rightMode === 'playing' && active);
-  const moving = handMoving || active;
+  const camMoving = view.tick();                                   // カメラを回している・慣性で動いている間も「動いている」扱い（解像度を自動で下げる）
+  const moving = handMoving || active || camMoving;
   if(moving && wasMoving){
     frameAvg = frameAvg*0.9 + Math.min(100, now - lastFrame)*0.1;
     if(frameAvg > 24 && quality > 0.5) { quality = Math.max(0.5, quality - 0.1); frameAvg = 16; }
@@ -1029,7 +1030,7 @@ function loop(now){
     } else pose = currentPose(now);
     if(!tabOn) right = showRight ? rightState(now, pl, phR) : null;
     right = window.__forceRight || smoothRight(right, now);
-    view.render(pose, {...state, right, quality: moving ? quality : 1});
+    view.render(pose, {...state, right, quality: moving ? quality : 1, animating: handMoving || active});
     dirty = false;
   }
   wasMoving = moving;
