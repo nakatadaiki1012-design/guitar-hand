@@ -42,7 +42,12 @@
   .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:var(--shadow)}
   .stage{position:sticky;top:8px}
   @media (max-width:900px){.stage{position:relative;top:0}}
-  .stage-head{display:flex;align-items:center;gap:10px;padding:0 4px 8px;flex-wrap:wrap}
+  /* 見出しは高さを固定（ソロで文字の長さが変わっても、改行で3D画面の位置がずれないように）。はみ出す分は「…」 */
+  .stage-head{display:flex;align-items:center;gap:10px;padding:0 4px 8px;flex-wrap:nowrap;height:52px;box-sizing:content-box;overflow:hidden}
+  .stage-head > div:nth-child(2){flex:1;min-width:0}
+  #chordName,#chordReading,#difficulty{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #chordName{flex:0 1 auto;max-width:45%}
+  #difficulty{min-height:1.4em}
   #chordName{font-size:34px;font-weight:800;line-height:1}
   #chordReading{color:var(--sub);font-size:13px}
   #difficulty .tabhead{color:#0e9f9a;font-size:12px;font-weight:700;margin-right:8px}
