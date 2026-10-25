@@ -1,7 +1,7 @@
 /* =========================================================
    ギター・ハンドガイド（画面の操作・音・説明）
    ========================================================= */
-import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, resolveChord, PROGRESSIONS, CHORDS, SONGS, TAB_SONGS } from './data.js';
+import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, resolveChord, PROGRESSIONS, CHORDS, SONGS, TAB_SONGS, ROOT_SEMI } from './data.js';
 import { parseChordSheet, cleanTitle, bookmarkletCode } from './chordsheet.js';
 import { TIERS, DETECTED, QUALITY_LEVEL, setQualityLevel } from './quality.js';
 import { computePose, setPoseTable, dumpPoseTable, computeTabPose, blendPose, blendTab, HAND_CFG, clearPoseCache } from './pose.js';
@@ -17,9 +17,9 @@ import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 import { fingerPlanRight, fingerStateAt } from './fingerpick.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
-               bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true, pickStyle:'finger'};   // pickStyle：ソロの右手（finger＝指弾き / pick＝ピック）
+               bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true, pickStyle:'finger', capoName:'sound'};   // capoName：カポの時に大きく出すコード名（sound＝実際の音／shape＝押さえる形）   // pickStyle：ソロの右手（finger＝指弾き / pick＝ピック）
 // 設定は次に開いた時も同じになるように覚えておく（覚えられない端末ではそのまま）
-const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam','pickStyle'];
+const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam','pickStyle','capoName'];
 try{ const sv = JSON.parse(localStorage.getItem('guitarSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
 const saveSettings = () => { try{ localStorage.setItem('guitarSettings', JSON.stringify(Object.fromEntries(SAVED.map(k=>[k, state[k]])))); }catch(e){} };
 let view = null, rig = null;
@@ -38,12 +38,19 @@ function shiftChord(c){
           barre: c.barre ? {...c.barre, fret: c.barre.fret + k} : null};
 }
 const chordPose = name => computePose(shiftChord(typeof name === 'string' ? getChord(name) : name), view.rig);
-const SEMI = {'C':0,'D':2,'E♭':3,'E':4,'F':5,'G':7,'A':9,'B♭':10,'B':11};
-const NOTE_NM = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+const NOTE_NM = ['C','C♯','D','E♭','E','F','F♯','G','G♯','A','B♭','B'];   // コードのボタンと同じ書き方
 function soundingName(name){
   const [root, type] = splitName(name);
-  return NOTE_NM[(SEMI[root] + capo()) % 12] + type;
+  return NOTE_NM[(ROOT_SEMI[root] + capo()) % 12] + type;
 }
+/* カポを付けた時のコード名：大きく出す方と、小さく添える方
+   設定「カポの時のコード名」：sound＝実際に鳴るコードを大きく（押さえる形は小さく）／shape＝押さえる形を大きく */
+function capoNames(name){
+  const k = capo(); if(!k || !name) return {big: name, small: ''};
+  const snd = soundingName(name);
+  return state.capoName === 'shape' ? {big: name, small: `カポ${k}・実際の音は ${snd}`} : {big: snd, small: `カポ${k}・押さえる形は ${name}`};
+}
+function chordRead(name){ const [r, t] = splitName(name); const RR = ROOTS.find(x=>x.id===r), T = TYPES.find(x=>x.id===t); return RR && T ? `${RR.read}・${T.read}` : ''; }
 
 /* =========================================================
    縦のコード表
@@ -187,10 +194,10 @@ function setChord(name, animate=true){
   const [root, type] = splitName(name);
   state.root = root; state.type = type;
   for(const id of ['chordName','chordReading','difficulty']) document.getElementById(id)._v = null;
-  document.getElementById('chordName').textContent = name;
-  const R = ROOTS.find(r=>r.id===root), T = TYPES.find(t=>t.id===type);
+  const cn = capoNames(name);
+  document.getElementById('chordName').textContent = cn.big;
   document.getElementById('difficulty').innerHTML = '';
-  document.getElementById('chordReading').textContent = `${R.read}・${T.read}` + (capo() ? `（カポ${capo()}・実際の音は ${soundingName(name)}）` : '');
+  document.getElementById('chordReading').textContent = chordRead(cn.big) + (cn.small ? `（${cn.small}）` : '');
   if(!playing()) showStrip([name]);
   updateButtons();
   if(!view) return;
@@ -301,6 +308,12 @@ finishRow();
 choiceRow('optRight', RMODES, 'rightMode', ()=>{});
 // ソロの右手：指弾き（親指＝ベース、人差し指・中指・薬指＝3・2・1弦）か、ピックか
 choiceRow('optPick', [['finger','指弾き'],['pick','ピック']], 'pickStyle', ()=>{ for(const sg of tabs.list) sg.rplan = null; });
+// カポの時のコード名：実際に鳴るコードを大きく（標準）／押さえる形を大きく
+choiceRow('optCapoName', [['sound','実際の音を大きく'],['shape','押さえる形を大きく']], 'capoName', ()=>{
+  if(tabs.running){ const i = tabs.shown; tabs.shown = -1; showTabEvent(i); }
+  else if(activeTab() === 'tabs' && tabs.shown >= 0) showTabEvent(tabs.shown, true);
+  else if(!prog.running && !song.running) setChord(chordName(), false);
+});
 // 軽さ（画質）：変えると読み込み直す
 state.qlevel = QUALITY_LEVEL;
 choiceRow('optQuality', [['auto', `自動（この端末：${TIERS[DETECTED.tier].label}）`], ...Object.entries(TIERS).map(([k,t])=>[k, t.label])], 'qlevel',
@@ -869,7 +882,6 @@ function tabChordAt(sg, t){
   const tl = sg.chordTL; let k = 0; for(let j=0;j<tl.length;j++) if(tl[j].t <= t + 1e-6) k = j;
   return {name: tl[k].c, next: tl[k+1] || null};
 }
-const chordReadOf = name => { const r = resolveChord(name); if(!r) return ''; const [ro, ty] = splitName(r.name); const RR = ROOTS.find(x=>x.id===ro), T = TYPES.find(x=>x.id===ty); return RR && T ? `${RR.read}・${T.read}` : ''; };
 const setText = (id, v, html=false) => { const el = document.getElementById(id); if(el._v === v) return; el._v = v; html ? el.innerHTML = v : el.textContent = v; };   // 変わった時だけ書き換える
 function showTabEvent(i, still=false){
   const sg = TAB(), e = sg.events[i]; if(!e) return;
@@ -883,9 +895,11 @@ function showTabEvent(i, still=false){
     // 演奏中：1音ずつの音名は速すぎて読めないので、いま押さえているコード（コードのない曲はポジション）を大きく出す
     const ch = tabChordAt(sg, e.t);
     if(ch){
-      setText('chordName', ch.name);
-      setText('chordReading', chordReadOf(ch.name) + (capo() ? `（カポ${capo()}）` : ''));
-      const nt = ch.next ? `次のコード：${ch.next.c}` : '';
+      const r = resolveChord(ch.name), cn = capoNames(r ? r.name : ch.name);
+      setText('chordName', cn.big);
+      setText('chordReading', chordRead(cn.big) + (cn.small ? `（${cn.small}）` : ''));
+      const rn = ch.next && resolveChord(ch.next.c);
+      const nt = ch.next ? `次のコード：${capoNames(rn ? rn.name : ch.next.c).big}` : '';
       setText('difficulty', `<span class="tabhead">${e.chord ? 'コードを押さえたまま弾く' : '1音ずつ押さえて弾く'}</span>` + (nt ? `<span class="tabnext">${nt}</span>` : ''), true);
     } else {
       setText('chordName', `${(e.P||1) + capo()}フレット`);
