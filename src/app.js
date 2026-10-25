@@ -184,6 +184,7 @@ function setChord(name, animate=true){
   if(!chord) return;
   const [root, type] = splitName(name);
   state.root = root; state.type = type;
+  for(const id of ['chordName','chordReading','difficulty']) document.getElementById(id)._v = null;
   document.getElementById('chordName').textContent = name;
   const R = ROOTS.find(r=>r.id===root), T = TYPES.find(t=>t.id===type);
   document.getElementById('difficulty').innerHTML = '';
@@ -859,19 +860,44 @@ function tabEventPose(sg, i){
   return open.length || held.length ? {...pose, openStr: open, held} : pose;
 }
 // 見出しの表示：いまの音の名前と、弦・フレット・指。その下に、押さえ方と次の音
+// 曲の伴奏のコードの並び（拍の位置つき）。その時刻のコードと、次のコード
+function tabChordAt(sg, t){
+  if(!sg.chords) return null;
+  if(!sg.chordTL){ sg.chordTL = []; let x = sg.pickup || 0; for(const bar of sg.chords) for(const [c, n] of bar){ const last = sg.chordTL[sg.chordTL.length-1]; if(!last || last.c !== c) sg.chordTL.push({t: x, c}); x += n; } }
+  const tl = sg.chordTL; let k = 0; for(let j=0;j<tl.length;j++) if(tl[j].t <= t + 1e-6) k = j;
+  return {name: tl[k].c, next: tl[k+1] || null};
+}
+const chordReadOf = name => { const r = resolveChord(name); if(!r) return ''; const [ro, ty] = splitName(r.name); const RR = ROOTS.find(x=>x.id===ro), T = TYPES.find(x=>x.id===ty); return RR && T ? `${RR.read}・${T.read}` : ''; };
+const setText = (id, v, html=false) => { const el = document.getElementById(id); if(el._v === v) return; el._v = v; html ? el.innerHTML = v : el.textContent = v; };   // 変わった時だけ書き換える
 function showTabEvent(i, still=false){
   const sg = TAB(), e = sg.events[i]; if(!e) return;
   if(tabs.shown === i && !still) return; tabs.shown = i;
-  document.getElementById('chordName').textContent = e.notes.map(n=>noteName(n.m + capo())).join('・');
-  document.getElementById('chordReading').textContent = e.notes.map(noteLabel).join(' ／ ');
   const nx = sg.events[i+1];
   stripKey = '';
   sg.plan ||= fingerPlan(sg.events);
   const gname = {spread:'指を開く形', diag:'斜めの形'}[sg.plan[i].grip];
-  // 「いま・次」は3D画面にかぶせず、上の見出しの下に小さく出す（手が見えなくならないように）
   chordCard.innerHTML = '';
-  document.getElementById('difficulty').innerHTML = `<span class="tabhead">${e.chord ? e.chord + 'を押さえたまま' : (e.P||1) + 'ポジション・' + gname}</span>` +
-    (nx ? `<span class="tabnext">次：${nx.notes.map(noteLabel).join(' ／ ')}</span>` : '');
+  if(tabs.running){
+    // 演奏中：1音ずつの音名は速すぎて読めないので、いま押さえているコード（コードのない曲はポジション）を大きく出す
+    const ch = tabChordAt(sg, e.t);
+    if(ch){
+      setText('chordName', ch.name);
+      setText('chordReading', chordReadOf(ch.name) + (capo() ? `（カポ${capo()}）` : ''));
+      const nt = ch.next ? `次のコード：${ch.next.c}` : '';
+      setText('difficulty', `<span class="tabhead">${e.chord ? 'コードを押さえたまま弾く' : '1音ずつ押さえて弾く'}</span>` + (nt ? `<span class="tabnext">${nt}</span>` : ''), true);
+    } else {
+      setText('chordName', `${(e.P||1) + capo()}フレット`);
+      setText('chordReading', `人差し指を${(e.P||1) + capo()}フレットに置く形（${gname}）`);
+      setText('difficulty', '', true);
+    }
+  } else {
+    // 止まっている時（タブ譜の音を押した時）：その音を詳しく
+    setText('chordName', e.notes.map(n=>noteName(n.m + capo())).join('・'));
+    setText('chordReading', e.notes.map(noteLabel).join(' ／ '));
+    const ch = tabChordAt(sg, e.t);
+    setText('difficulty', `<span class="tabhead">${e.chord ? e.chord + 'を押さえたまま' : (ch ? ch.name + '・' : '') + (e.P||1) + 'ポジション・' + gname}</span>` +
+      (nx ? `<span class="tabnext">次：${nx.notes.map(noteLabel).join(' ／ ')}</span>` : ''), true);
+  }
   if(still && view){ const now = performance.now(), nx = tabEventPose(sg, i); poseFrom = poseTo ? currentPose(now) : null; tweenStart = now; tweenDur = 160; poseTo = window.__pose = nx; kick(); }
 }
 // 右手：ピックの先の横の位置（mm）→ 振りの角度
@@ -977,6 +1003,7 @@ function stopTab(){
   tabs.running = false; clearInterval(tabs.timer);
   document.getElementById('btnTab').textContent = '▶ 弾いてみせる' + (tabs.from ? `（${tabs.from + 1}音目から）` : '');
   if(was && view){ const b = (heardTime() - tabs.t0)/tabs.bs; poseFrom = null; poseTo = tabPose(TAB(), Math.max(0, b)); }
+  if(was && tabs.shown >= 0){ const i = tabs.shown; tabs.shown = -1; showTabEvent(i); }   // 見出しを「その音の詳しい表示」に戻す
   highlightTab(-1); kick(); updateFs();
 }
 document.getElementById('btnTab').onclick = ()=> (tabs.running || tabs.prep && document.getElementById('btnTab').textContent.startsWith('準備')) ? stopTab() : startTab();
