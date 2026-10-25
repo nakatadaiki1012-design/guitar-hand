@@ -23,7 +23,7 @@ const CFG = {
   fan: {1: -24, 2: 0, 3: 16},    // 指先の前後の位置（mm）：つけ根の並びと同じく、人差し指はネック寄り・薬指はブリッジ寄り（逆にすると指が交差する）
   thumbX: -36,                   // 親指の先は、中指より 36mm ネック寄り（人差し指の前に出る）
   pad: 8,                        // 指先の関節から、弦に当たる指の腹の点まで（mm）
-  pinky: [20, -26, 7],           // 小指の先：薬指の先から、ブリッジ側へ20mm・6弦側へ26mm・7mm浮かせた所（薬指の横で、横に曲げずに軽く丸める）
+  pinkyCurl: [15, 75, 40],       // 小指の曲げ（つけ根・第二関節・第一関節）：力を抜いて軽く丸め、弦から8mmほど浮かせる
   away: 5,                       // 弾き終わって戻る時は、弦から5mm浮かせて戻る（鳴っている弦に触れて音を止めない）。次に弾く直前に弦へ下りる
   thumbShift: 8,                 // 親指が弦を1本移るごとに、手ごと動く量（mm）
   knuckleBack: 20, knuckleUp: 60,// 中指のつけ根は、中指の指先の「構えの位置」から、手首側へ24mm・表板から離れる方へ68mm（指は付け根40°・第二関節50°ほどの自然な曲げ）
@@ -59,6 +59,13 @@ function solveFinger(L, K, T, d0, n1){
   const pts = chain(th, p).map(([u,v]) => add(K, add(mul(e,u), mul(n1,v))));
   const tip = add(pts[2], mul(norm(sub(pts[3], pts[2])), L[2]));          // 指の腹の点 → モデルの指先の関節
   return [pts[0], pts[1], pts[2], tip];
+}
+
+// 決まった角度で指を丸める（つけ根 K から、向き d・曲げる側 n の面の中で）
+function curlFinger(L, K, d, n, c){
+  const pts = [K]; let a = 0, p = K;
+  for(let i=0;i<3;i++){ a += c[i]*DEG; p = add(p, add(mul(d, Math.cos(a)*L[i]), mul(n, Math.sin(a)*L[i]))); pts.push(p); }
+  return pts;
 }
 
 export function fingerPose(rig, st){
@@ -97,8 +104,6 @@ export function fingerPose(rig, st){
     window.__fpRestAbd = [1,2,3,4].map(f=>{ const v0 = norm(sub(rest[jointName(f,1)], rest[jointName(f,0)])), v1 = norm(sub(rest[jointName(f,2)], rest[jointName(f,1)]));
       const kl = norm(sub(rest[jointName(4,1)], rest[jointName(1,1)])); return ((Math.asin(dot(v1, kl)) - Math.asin(dot(v0, kl)))/DEG).toFixed(1); });
   }
-  // 小指は弾かない：薬指のすぐ後ろ（1弦より外・少し浮かせた所）に、薬指と同じように曲げてついていく
-  const T4f = () => { const r = tipTarget(3, strings[3]); return [r[0] + CFG.pinky[0], r[1] + CFG.pinky[1], r[2] + CFG.pinky[2]]; };
   for(let f=1; f<=4; f++){
     const M = add(W, toW(rest[jointName(f,0)])), K = add(W, toW(rest[jointName(f,1)]));
     let d0 = norm(toW(sub(rest[jointName(f,4)], rest[jointName(f,1)])));
@@ -106,9 +111,10 @@ export function fingerPose(rig, st){
     const L = rig.lengths[f];
     // 指を曲げる面：つけ根の並び（手の X 軸）に直角な面。指は横には折れず、まっすぐ前へ丸まる（第二関節が横へ飛び出さない）
     const Tf = f === 4 ? null : tipTarget(f, strings[f]);
-    const toT = norm(sub(f === 4 ? T4f() : Tf, K));
+    const toT = f === 4 ? norm(sub(K, M)) : norm(sub(Tf, K));               // 小指は、つけ根の骨の向きをもとに丸める
     let n1 = norm(cross(KL, toT)); if(dot(n1, N) < 0) n1 = mul(n1, -1);
-    const pts = solveFinger(L, K, f === 4 ? T4f() : Tf, d0, n1);
+    // 小指は弾かない：目標の点は追わず、力を抜いて軽く丸めた形のまま（手が動いても曲がる向きがひっくり返らない）
+    const pts = f === 4 ? curlFinger(L, K, toT, n1, CFG.pinkyCurl) : solveFinger(L, K, Tf, d0, n1);
     const axis = norm(cross(toT, n1));          // 関節の曲がる軸＝曲げる面に直角（指の骨がねじれないように）
     out.push({name: jointName(f,0), pos: M, fwd: norm(sub(K, M)), dorsal: U});
     for(let i=0;i<4;i++){
@@ -116,7 +122,7 @@ export function fingerPose(rig, st){
       out.push({name: jointName(f,i+1), pos: pts[i], fwd, dorsal: norm(cross(fwd, axis))});
     }
     tips[f] = add(pts[2], mul(norm(sub(pts[3], pts[2])), L[2] + CFG.pad));
-    if(f < 4) errs[f] = vlen(sub(tips[f], tipTarget(f, strings[f])));
+    if(f < 4) errs[f] = vlen(sub(tips[f], Tf));
     { const v0 = norm(sub(K, M)), v1 = norm(sub(pts[1], pts[0])), v2 = norm(sub(pts[2], pts[1]));
       const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, dot(a, b))))/DEG;
       angs[f] = {mcp: ang(v0, v1)*Math.sign(dot(sub(v1, v0), N) || 1), pip: ang(v1, v2), abd: (Math.asin(dot(v1, KL)) - Math.asin(dot(v0, KL)))/DEG, twist: ang(norm(cross(v0, N)), norm(cross(v1, n1)))}; }

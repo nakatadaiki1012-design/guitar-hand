@@ -205,7 +205,7 @@ function currentPose(now){
   return blendPose(poseFrom, poseTo, t);
 }
 window.setChord = setChord; window.__strumState = strumState;
-window.__dbg = {get tabRight(){ return tabRight; }, TAB: () => TAB(), get tabs(){ return tabs; }, kick: () => kick(), state, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R};   // 検証用（動きの数値を外から見る）
+window.__dbg = {get tabRight(){ return tabRight; }, prep: (sg, i) => tabEventPose(sg, i), TAB: () => TAB(), get tabs(){ return tabs; }, kick: () => kick(), state, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R};   // 検証用（動きの数値を外から見る）
 // コードのボタンを押した時：手がすばやく次の形になり、押さえ終わると同時にジャラーンと鳴る
 function pickChord(name){
   if(prog.running || song.running || tabs.running){ return; }              // 練習・曲デモの演奏中はコードを変えない
@@ -360,7 +360,7 @@ fsName.onclick = ()=>{ document.querySelector(`[data-tab="${{practice:'songs', s
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick = ()=>{
   document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on', x===b));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.id === 'tab-'+b.dataset.tab));
-  if(b.dataset.tab === 'tabs'){ if(!tabs.running) showTabEvent(Math.max(0, tabs.shown), true); }
+  if(b.dataset.tab === 'tabs'){ if(!tabs.running){ showTabEvent(Math.max(0, tabs.shown), true); tabPrepIdle(); } }
   else if(!tabs.running && tabs.shown >= 0){ tabs.shown = -1; setChord(chordName(), true); }
   kick(); updateFs();
 });
@@ -735,6 +735,7 @@ function selectTab(i){
   const sg = TAB();
   tabBpm.value = sg.bpm; document.getElementById('tabBpmVal').textContent = sg.bpm;
   renderTabList(); renderTabSheet(); showTabEvent(0, true);
+  tabPrepIdle();
 }
 // 指の名前（短く）
 const FSHORT = ['','人差し','中','薬','小'];
@@ -782,6 +783,36 @@ function highlightTab(i){
   g.classList.add('now');
   const x = +g.querySelector('rect').getAttribute('x');
   if(x < tabSheet.scrollLeft + 30 || x > tabSheet.scrollLeft + tabSheet.clientWidth - 80) tabSheet.scrollLeft = Math.max(0, x - 60);
+}
+/* 手の形の先読み：曲ごとに「何番目の音まで計算したか」を覚えておき、少しずつ先へ進める
+   （カポやギターを変えると手の形が変わるので、その時は最初から） */
+const tabPrepKey = () => capo() + '|' + state.guitar;
+function tabPrepped(sg){ if(sg.prepKey !== tabPrepKey()){ sg.prepKey = tabPrepKey(); sg.prepped = 0; } return sg.prepped || 0; }
+function prepTabPoses(sg, upto, ms){
+  const end = performance.now() + ms;
+  let k = tabPrepped(sg);
+  while(k < Math.min(upto, sg.events.length) && performance.now() < end){ tabEventPose(sg, k); sg.prepped = ++k; }
+}
+// 演奏中：弾いている所の 24 音先まで、30ms ごとに少しずつ（1回 8ms まで）計算する
+function tabPrepLoop(){
+  if(!tabs.running || !view) return;
+  const sg = TAB(), cur = Math.max(0, tabs.shown);
+  if(tabPrepped(sg) < sg.events.length){
+    if(tabPrepped(sg) < cur + 24) prepTabPoses(sg, cur + 24, 8);
+    setTimeout(tabPrepLoop, 30);
+  }
+}
+// 曲を選んだ時：ひまな時間に、その曲の手の形を最初から計算しておく（押してからすぐ始められるように）
+function tabPrepIdle(){
+  const idle = window.requestIdleCallback || (fn=>setTimeout(()=>fn({timeRemaining:()=>8}), 30));
+  const go = dl => {
+    if(!view || activeTab() !== 'tabs' || tabs.running || tabs.preparing) return;
+    const sg = TAB(); if(!sg || tabPrepped(sg) >= sg.events.length) return;
+    sg.plan ||= fingerPlan(sg.events);
+    prepTabPoses(sg, sg.events.length, Math.max(2, dl.timeRemaining() - 2));
+    idle(go);
+  };
+  idle(go);
 }
 // 何番目の音の時の手の形：手はポジション（人差し指のフレット）に置いたまま、指だけで押さえる。開放弦は緑に光らせる
 function tabEventPose(sg, i){
@@ -880,13 +911,14 @@ async function startTab(){
   // 曲で使う手の形を先に計算しておく（少しずつ・画面を止めないように）
   const btn = document.getElementById('btnTab');
   sg.plan ||= fingerPlan(sg.events);
-  const todo = sg.events.map((e,i)=>[eventChord(e), e.P||1, sg.plan[i]]);   // [コード, ポジション, 指の動き]
+  // 最初の数音（1拍ぶん・最低4音）だけ先に計算して、すぐ始める。残りはカウントの間と演奏中に、弾く所より少し先を計算していく
+  const first = Math.min(sg.events.length, Math.max(4, sg.events.findIndex(e=>e.t >= sg.events[0].t + 1) + 1 || sg.events.length));
   const run = ++tabs.prep;
   tabs.preparing = true;                                          // 準備の間は、ほかの先読み計算を止める
   try{
-    for(let k=0;k<todo.length;k++){
-      btn.textContent = `準備中 ${k}/${todo.length}`;
-      tabEventPose(sg, k);
+    while(tabPrepped(sg) < first){
+      btn.textContent = `準備中 ${tabPrepped(sg)}/${first}`;
+      prepTabPoses(sg, first, 30);
       await new Promise(r=>setTimeout(r, 0));
       if(run !== tabs.prep) return;                               // 準備中にストップや曲の変更があった
     }
@@ -898,6 +930,7 @@ async function startTab(){
   btn.textContent = '■ ストップ';
   tabs.timer = setInterval(tickTab, 25);
   tickTab(); kick(); updateFs();
+  tabPrepLoop();
 }
 function stopTab(){
   tabs.prep++; tabs.preparing = false;
