@@ -345,6 +345,22 @@ export function applyChordHold(events, chords, pickup = 0, shapes = {}){
     const sp = ch.frets.map((f, s) => ({f, k: ch.fingers[s]})).filter(n => n.f > 0 && n.k);
     e.P = Math.max(1, Math.min(...[...sp, ...pr].map(n => n.f - n.k + 1)));
   });
+  // いちど離したコードの指は、その弦をまた弾く時まで押さえ直さない
+  // （1音だけ離して次の音ですぐ戻す、という無駄な動きをなくす。離している間も「コードを押さえたまま」の扱いは変えない）
+  let lifted = new Set(), prevChord = null;
+  const key = n => n.s + '.' + n.f + '.' + n.k;
+  for(const e of events){
+    if(!e.chord){ lifted.clear(); prevChord = null; continue; }
+    if(e.chord !== prevChord){ lifted.clear(); prevChord = e.chord; }
+    if(e.hold && e.hold.length) e.hold = e.hold.filter(h => !lifted.has(key(h)));
+    const sh = fits[events.indexOf(e)].ch;
+    for(let s2=0; s2<NS; s2++){
+      const f = sh.frets[s2], k = sh.fingers[s2]; if(!(f > 0) || !k) continue;
+      const kk = s2 + '.' + f + '.' + k;
+      if(e.notes.some(n => n.s === s2 && n.f === f)) lifted.delete(kk);             // 弾いた → 押さえている
+      else if(!(e.hold || []).some(h => h.s === s2 && h.f === f)) lifted.add(kk);  // 押さえていない → 離したまま
+    }
+  }
   markSweep(events);
 }
 /* 同時に弾く音（ベース＋メロディなど）の間にはさまる弦：ピックで弾くとその弦も通るので、一緒に鳴る（e.sweep）
@@ -525,22 +541,26 @@ export function fingerPlan(events){
     const hover = {};
     for(let k=1;k<=4;k++){
       if(pressing.has(k)) continue;
-      const l = last[k];
+      let l = last[k];
       // 隣の指が押さえている時は、つられて少し低く待つ
       const nb = (pressing.has(k-1) || pressing.has(k+1)) ? -0.8 : 0;
       // さっきの場所で待つと指が重なる・交差する時はよける：
       //  ・押さえている指のすぐそば（同じ弦・1フレット以内）
       //  ・指の順番が逆になる（例：薬指が3フレットを押さえているのに、小指が3フレットの上で待つ → 小指が薬指の下にもぐる）
       const near = l && en.some(n => n.f > 0 && n.s === l.s && Math.abs(n.f - l.f) <= 1);
+      // 同じフレットで待つのもだめ（薬指が4弦3Fを押さえる時に小指が1弦3Fの上で待つと、薬指が小指の下をくぐる）
       const flip = l && en.some(n => n.f > 0 && n.k && ((n.k < k && n.f >= l.f) || (n.k > k && n.f <= l.f)));
       if(l && !near && !flip) hover[k] = [l.s, l.f, (played.has(l.s) ? 4 : 2.2) + nb];
-      else if(l){                                                   // 自分のフレット（押さえている指より順番どおりの側）の上へよける
+      else if(l){                                                       // よける：同じ弦の、順番どおりになるフレットの上へ。以後はそこで待つ（元の場所へ行ったり来たりしない）
         let fr = P + k - 1;
-        for(const n of en) if(n.f > 0 && n.k){ if(n.k < k) fr = Math.max(fr, n.f); if(n.k > k) fr = Math.min(fr, n.f - 1); }
+        for(const n of en) if(n.f > 0 && n.k){ if(n.k < k) fr = Math.max(fr, n.f + 1); if(n.k > k) fr = Math.min(fr, n.f - 1); }
+        fr = Math.max(1, Math.min(P + 3, fr));
         const s2 = en.some(n => n.f > 0 && n.s === l.s && Math.abs(n.f - fr) <= 1) ? Math.min(5, l.s + 1) : l.s;
-        hover[k] = [s2, Math.max(1, fr), 5];
+        hover[k] = [s2, fr, 4];
+        last[k] = {s: s2, f: fr};
       }
-      else if(grip === 'diag') hover[k] = [home, P + Math.min(k - 1, 2), 3.5 + (k === 4 ? 1.5 : 0) + nb];   // 斜めの形：小指は薬指のそばで待つ
+      if(hover[k]) continue;
+      if(grip === 'diag') hover[k] = [home, P + Math.min(k - 1, 2), 3.5 + (k === 4 ? 1.5 : 0) + nb];   // 斜めの形：小指は薬指のそばで待つ
       else hover[k] = [home, P + k - 1, 3.5 + nb];
     }
     // 待っている指も、押さえている指・ほかの待っている指と順番どおりのフレットに

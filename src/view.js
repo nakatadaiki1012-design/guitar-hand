@@ -8,6 +8,7 @@ import { buildGuitar } from './guitar.js';
 import { createBackdrop } from './backdrop.js';
 import { loadHand, applyPose } from './handrig.js';
 import { rightHandPose, PICK_TIP } from './strum.js';
+import { fingerPose } from './fingerpick.js';
 import { slotCenter, fretX, halfW, strY, stringZ, STRING_R, FRET_TOP, DEG, NSTR, STRUM_X, GTYPE, setGuitarType } from './geom.js';
 import { STRING_NAMES, FINGER_COLORS } from './data.js';
 import { Q } from './quality.js';
@@ -283,12 +284,15 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     // 右手
     if(rigR.root.visible !== !!opts.right) renderer.shadowMap.needsUpdate = true;
     rigR.root.visible = !!opts.right;
-    pick.visible = !!opts.right;
+    const finger = !!(opts.right && opts.right.mode === 'finger');     // 指弾き（ピックは持たない）
+    pick.visible = !!opts.right && !finger;
     if(opts.right){
-      const rp = rightHandPose(rigR, opts.right); window.__rp = rp; applyPose(rigR, rp);
-      const {pos, x, n} = rp.pick, X = new THREE.Vector3(...x), Z = new THREE.Vector3(...n);
-      pickBasis.makeBasis(X, Z.clone().cross(X), Z);
-      pick.quaternion.setFromRotationMatrix(pickBasis); pick.position.set(...pos);
+      const rp = finger ? fingerPose(rigR, opts.right) : rightHandPose(rigR, opts.right); window.__rp = rp; applyPose(rigR, rp);
+      if(!finger){
+        const {pos, x, n} = rp.pick, X = new THREE.Vector3(...x), Z = new THREE.Vector3(...n);
+        pickBasis.makeBasis(X, Z.clone().cross(X), Z);
+        pick.quaternion.setFromRotationMatrix(pickBasis); pick.position.set(...pos);
+      }
     }
     // コードが変わったら見る中心も少しずらす（カメラごと平行移動）。全体・右手の表示では動かさない
     const nt = new THREE.Vector3(...pose.target);
@@ -345,7 +349,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   setView('diag'); setView2('front');
   backdrop.set('day');
   return {
-    render, setView, rig, rigR, rightHandPose, get info(){ return renderer.info; },
+    render, setView, rig, rigR, rightHandPose, fingerPose, get info(){ return renderer.info; },
     setView2,
     setBackdrop: name => { backdrop.set(name); touch(); },
     setFinish: name => { gtr.setFinish(finishName = name); touch(); },

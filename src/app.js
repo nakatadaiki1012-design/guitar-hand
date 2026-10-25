@@ -12,11 +12,12 @@ import { FINISHES } from './guitar.js';
 import { GUITARS, NSTR, strY, STRUM_X, stringZ, STRING_R } from './geom.js';
 import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventChord, eventPressed, noteName, fingerPlan, applyChordHold, markSweep } from './tab.js';
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
+import { fingerPlanRight, fingerStateAt } from './fingerpick.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
-               bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true};
+               bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true, pickStyle:'finger'};   // pickStyle：ソロの右手（finger＝指弾き / pick＝ピック）
 // 設定は次に開いた時も同じになるように覚えておく（覚えられない端末ではそのまま）
-const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam'];
+const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam','pickStyle'];
 try{ const sv = JSON.parse(localStorage.getItem('guitarSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
 const saveSettings = () => { try{ localStorage.setItem('guitarSettings', JSON.stringify(Object.fromEntries(SAVED.map(k=>[k, state[k]])))); }catch(e){} };
 let view = null, rig = null;
@@ -204,7 +205,7 @@ function currentPose(now){
   return blendPose(poseFrom, poseTo, t);
 }
 window.setChord = setChord; window.__strumState = strumState;
-window.__dbg = {get tabRight(){ return tabRight; }, TAB: () => TAB(), get tabs(){ return tabs; }, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R};   // 検証用（動きの数値を外から見る）
+window.__dbg = {get tabRight(){ return tabRight; }, TAB: () => TAB(), get tabs(){ return tabs; }, kick: () => kick(), state, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R};   // 検証用（動きの数値を外から見る）
 // コードのボタンを押した時：手がすばやく次の形になり、押さえ終わると同時にジャラーンと鳴る
 function pickChord(name){
   if(prog.running || song.running || tabs.running){ return; }              // 練習・曲デモの演奏中はコードを変えない
@@ -295,6 +296,8 @@ function applyGuitar(){
 choiceRow('optGuitar', Object.entries(GUITARS).map(([k,gt])=>[k, gt.label]), 'guitar', ()=>{ if(prog.running) stopProg(); if(song.running) stopSong(); stopTab(); applyGuitar(); });
 finishRow();
 choiceRow('optRight', RMODES, 'rightMode', ()=>{});
+// ソロの右手：指弾き（親指＝ベース、人差し指・中指・薬指＝3・2・1弦）か、ピックか
+choiceRow('optPick', [['finger','指弾き'],['pick','ピック']], 'pickStyle', ()=>{ for(const sg of tabs.list) sg.rplan = null; });
 // 軽さ（画質）：変えると読み込み直す
 state.qlevel = QUALITY_LEVEL;
 choiceRow('optQuality', [['auto', `自動（この端末：${TIERS[DETECTED.tier].label}）`], ...Object.entries(TIERS).map(([k,t])=>[k, t.label])], 'qlevel',
@@ -714,7 +717,7 @@ function loadTabSongs(){
   tabs.list = TAB_SONGS.map(sg=>{ const r = parseCompact(sg.tab); applyChordHold(r.events, sg.chords, sg.pickup, sg.shapes); markSweep(r.events); return {...sg, ...r}; });
   try{ for(const sg of JSON.parse(localStorage.getItem('guitarTabImports') || '[]')){ markSweep(sg.events); tabs.list.push(sg); } }catch(e){}
 }
-const saveImports = () => { try{ localStorage.setItem('guitarTabImports', JSON.stringify(tabs.list.filter(t=>t.imported), (k,v)=>k === 'plan' ? undefined : v)); }catch(e){} };
+const saveImports = () => { try{ localStorage.setItem('guitarTabImports', JSON.stringify(tabs.list.filter(t=>t.imported), (k,v)=>k === 'plan' || k === 'rplan' ? undefined : v)); }catch(e){} };
 loadTabSongs();
 const tabList = document.getElementById('tabList'), tabSheet = document.getElementById('tabSheet'), tabBpm = document.getElementById('tabBpm');
 function renderTabList(){
@@ -812,6 +815,12 @@ let tabK = 0;
 const thetaAt = y => { tabK ||= view.rightHandPose(view.rigR, {theta:0.2, lift:0, wrist:0, roll:0, flick:0}).tip[1] / 0.2; return y / tabK; };
 function tabRight(sg, b){
   const ev = sg.events, bs = tabs.bs;
+  if(state.pickStyle === 'finger'){                                        // 指弾き：指ごとの動きの予定表から、その時刻の形を出す
+    if(!sg.rplan || sg.rplan.bs !== bs){ sg.rplan = fingerPlanRight(ev, bs); sg.rplan.bs = bs; }
+    const st = fingerStateAt(sg.rplan, b*bs);
+    if(b < ev[0].t) st.lift = 6*(1 - Math.max(0, Math.min(1, (b + 1.5)/1.5)));   // 弾き始める前：少し浮かせた所から下りてくる
+    return st;
+  }
   const strokes = ev.map(e=>{
     const ss = e.notes.map(n=>n.s), lo = Math.min(...ss), hi = Math.max(...ss);
     const down = ss.length > 1 || Math.round(e.t*2) % 2 === 0;           // 表拍はダウン、裏拍はアップ。何本か同時はダウン
@@ -856,7 +865,7 @@ function tickTab(){
     const ss = e.notes.slice().sort((a,b)=>a.s-b.s);
     ss.forEach((n,k)=>playString(n.s, n.f, when + k*0.012, ss.length > 1 ? 0.34 : 0.46));
     // ベースとメロディを同時に弾く時は、ピックがその間の弦も通る。間の弦がコードの音なら、少し小さく一緒に鳴らす
-    if(e.sweep) for(const w of e.sweep) playString(w.s, w.f, when + (w.s - ss[0].s)*0.012, 0.2);
+    if(e.sweep && state.pickStyle !== 'finger') for(const w of e.sweep) playString(w.s, w.f, when + (w.s - ss[0].s)*0.012, 0.2);
   }
   while(tabs.click < 0 && tabs.t0 + tabs.click*tabs.bs < ahead){ click(tabs.t0 + tabs.click*tabs.bs, tabs.click === -sg.beats); tabs.click++; }
   if(tabs.next >= sg.events.length){
@@ -1018,6 +1027,7 @@ const QSTEPS = [1, 0.8, 0.6];
 let qStep = 0, qChanged = 0, slowRun = 0, fastRun = 0, restoreTimer = 0;
 function smoothRight(target, now){
   if(!target){ rSmooth = null; return null; }
+  if(target.mode === 'finger'){ rSmooth = null; return target; }         // 指弾きは予定表どおりに動く（なめらかさは予定表の中で作ってある）
   if(!rSmooth){ rSmooth = {...target}; return rSmooth; }
   const dt = Math.min(0.1, Math.max(0, (now - (rSmooth.t||now))/1000));
   const k = 1 - Math.exp(-dt/0.018);
