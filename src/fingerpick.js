@@ -1,9 +1,9 @@
 /* =========================================================
    右手の指弾き（フィンガーピッキング）
-   ・構え：手のひらは表板の方を向き、指は6弦側（上）へ向けてぶら下がる。手首は少し持ち上げる（クラシックギターの構え）
-   ・親指（p）：6・5・4弦のベース。弦のすぐ6弦側に添えておき、1弦側（床の方）へ動かして弾く
-   ・人差し指（i）＝3弦、中指（m）＝2弦、薬指（a）＝1弦 が基本。弦の6弦側に添えておき、手のひらへ曲げて弾く
-     （曲げると指先は、弦をこすって1弦側・表板から離れる方へ動く）。小指は軽く握っておく
+   ・構え：前腕はボディの縁の上を表板に沿って寝かせて来て、手首で軽く曲げ、手は弦の上から1弦側（下）へ垂らす（クラシックギターの構え）
+   ・親指（p）：6・5・4弦のベース。弦のすぐ6弦側に添えておき、1弦側（床の方）へ押して弾く
+   ・人差し指（i）＝3弦、中指（m）＝2弦、薬指（a）＝1弦 が基本。弦の1弦側に添えておき、手のひらの方（6弦側）へはじく
+     小指は弾かず、薬指の後ろについていく
    ・st = {mode:'finger', thumbS: 親指の弦（6弦=0〜）, strings:{1:弦,2:弦,3:弦}, pluck:{t:u, 1:u, 2:u, 3:u}, lift:mm}
        u：弾く動きの進み具合（0＝弦に添えている、0.5＝弦を通る、1＝弾き終わり）
    ========================================================= */
@@ -14,13 +14,16 @@ import { makeThumbModel, solveThumbTo } from './thumb.js';
 const CFG = {
   // 実際の構え（クラシックギター）：前腕はボディの上の縁（6弦側）を越えて来て、手首は弦の6弦側の上、表板から浮かせる。
   // 手は下（1弦側）へ垂れ、指は弦の上から下りて、手のひら側（6弦側・上）へ曲げて弾く。親指は指よりネック側に出て、ベース弦を下へ押して弾く
-  F: [-0.20, 0.50, -0.84],       // 手首→指のつけ根：1弦側（下）へ、表板の方へ、少しネック側へ
-  N: [0.15, 0.30, -1.0],         // 手のひらの向き：表板の方（少し1弦側・ブリッジ側）
-  elbow: [0.55, -0.75, 0.35],    // 手首→ひじ：前腕はボディの上の縁（6弦側・おしり側）から来る
+  // 前腕の向きを先に決め、手首で手のひら側へ曲げて手の向きを作る（前腕がギターの正面から突き出さないように）
+  elbow: [0.60, -0.75, -0.10],   // 手首→ひじ：前腕はボディのおしり側・6弦側の縁の上を、表板に沿って寝かせて来る
+  palmHint: [0.0, 0.3, -1.0],    // 手のひらはだいたい表板の方
+  wristFlex: 15,                 // 手首を手のひら側へ曲げる角度（軽く）
+  wristRoll: -20,                // 前腕のひねり（度）：親指側を少し起こす
   fan: {1: 6, 2: 0, 3: -6},      // 指先の前後の位置（mm）：人差し指はブリッジ寄り、薬指はネック寄り
   thumbX: -22,                   // 親指の先は、ほかの指より 22mm ネック寄り（指の前に出る）
   pad: 8,                        // 指先の関節から、弦に当たる指の腹の点まで（mm）
-  knuckleBack: 24, knuckleUp: 68,// 中指のつけ根は、中指の指先の「構えの位置」から、手首側へ24mm・表板から離れる方へ68mm（指は付け根40°・第二関節50°ほどの自然な曲げ）
+  thumbShift: 5,                 // 親指が弦を1本移るごとに、手ごと動く量（mm）
+  knuckleBack: 25, knuckleUp: 75,// 中指のつけ根は、中指の指先の「構えの位置」から、手首側へ24mm・表板から離れる方へ68mm（指は付け根40°・第二関節50°ほどの自然な曲げ）
   splay: {1: 2, 2: 0, 3: -2, 4: -4},   // 指はほぼそろえて、平行に下ろす
   // 弾く動き：弦に添えた位置（rest）→ 弾き終わりの位置（through）。y：1弦側が＋、z：客席側が＋
   //   指（i・m・a）：弦の1弦側に添え、手のひらの方（6弦側・上）へ弦をはじいて、少し浮く
@@ -57,7 +60,12 @@ function solveFinger(L, K, T, d0, n1){
 
 export function fingerPose(rig, st){
   const X0 = STRUM_X;
-  let F = norm(CFG.F); let N = norm(sub(CFG.N, mul(F, dot(CFG.N, F))));
+  const fa0 = mul(norm(CFG.elbow), -1);                                         // ひじ→手首
+  const P0 = norm(sub(CFG.palmHint, mul(fa0, dot(CFG.palmHint, fa0))));
+  const fl = CFG.wristFlex*DEG;
+  const F = norm(add(mul(fa0, Math.cos(fl)), mul(P0, Math.sin(fl))));        // 手首→指のつけ根
+  let N = norm(sub(P0, mul(F, dot(P0, F))));
+  N = R3(F, CFG.wristRoll*DEG, N);
   const U = mul(N, -1), Z = mul(F, -1), Y = U, X = cross(Y, Z);
   const toW = v => add(add(mul(X, v[0]), mul(Y, v[1])), mul(Z, v[2]));
   const toL = v => [dot(X, v), dot(Y, v), dot(Z, v)];
@@ -72,13 +80,12 @@ export function fingerPose(rig, st){
   // 手首の位置：中指のつけ根が、中指の構えの位置から決まった所に来るように
   const Tm = (()=>{ const x = X0 + CFG.fan[2]; return [x, strYf(strings[2], x) + CFG.rest.dy, stringZ(x) + CFG.rest.dz]; })();   // 中指の構えの位置（弾く動きでは手は動かさない）
   const Km = add(add(Tm, mul(F, -CFG.knuckleBack)), mul(N, -CFG.knuckleUp));
-  const tsh = Math.max(0, 1 - (st.thumbS ?? 1))*4;                                      // 親指が6弦へ行く時は、手ごと6弦側へ最大4mm寄せる
-  const W = add(sub(Km, toW(rest[jointName(2,1)])), [0, -tsh, st.lift || 0]);
+  const tsh = ((st.thumbS ?? 1) - 1)*CFG.thumbShift;                                    // 親指が弦を移る分、手ごと少しついていく（6弦なら上へ、4弦なら下へ）
+  const W = add(sub(Km, toW(rest[jointName(2,1)])), [0, tsh, st.lift || 0]);
   const out = [];
   out.push({name:'wrist', pos: W, fwd: F, dorsal: U});
-  const fa0 = mul(norm(CFG.elbow), -1);
-  const fa = norm(add(mul(F, 0.75), mul(fa0, 0.25)));
-  out.push({name:'forearm', pos: W, fwd: fa, dorsal: norm(sub(U, mul(fa, dot(U, fa))))});
+  const Ua = R3(fa0, CFG.wristRoll*DEG, mul(P0, -1));                       // 前腕の甲側
+  out.push({name:'forearm', pos: W, fwd: fa0, dorsal: norm(sub(Ua, mul(fa0, dot(Ua, fa0))))});
   const radial = norm(toW(sub(rest[jointName(1,1)], rest[jointName(2,1)])));
   const tips = {}, errs = {}, angs = {};
   for(let f=1; f<=4; f++){
@@ -119,7 +126,7 @@ export function fingerPose(rig, st){
   const nailL = mv(th.Rs[2], rig.thumbModelFP.restBasis[2][1]), fwdL = norm(sub(th.pts[3], th.pts[2]));
   tips.t = add(W, toW(add(add(th.pts[3], mul(fwdL, 1)), mul(nailL, -6))));
   errs.t = vlen(sub(tips.t, tT));
-  return {joints: out, tip: tips[1], tips, errs, angs, thAng: th.ang, pick: null};
+  return {joints: out, tip: tips[1], tips, errs, angs, thAng: th.ang, wrist: W, arm: fa0, pick: null};
 }
 
 /* ---------- タブ譜 → 指の動き ----------
