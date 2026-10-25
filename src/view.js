@@ -186,7 +186,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   const pickBasis = new THREE.Matrix4();
 
   // カメラ
-  const camera = new THREE.PerspectiveCamera(26, 16/9, 10, 60000);   // 遠くの水平線まで見える
+  const camera = new THREE.PerspectiveCamera(26, 16/9, 30, 60000);   // 遠くの水平線まで見える。手前は30mmから（近すぎると、奥行きの精度が低い端末で面が重なってちらつく）
   let controls = null, viewName = 'diag', target = new THREE.Vector3(45, 10, -4), mirror = false;
   // カメラの操作：1本指（左ドラッグ）で回す、2本指（右ドラッグ）で平行移動、ピンチ（ホイール）で拡大
   function makeControls(cam, tgt){
@@ -220,7 +220,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     controls = makeControls(camera, target);
   }
   // 2画面表示：右半分にもう1つの向きを同時に出す（右側もドラッグで回せる）
-  const camera2 = new THREE.PerspectiveCamera(26, 1, 10, 60000);
+  const camera2 = new THREE.PerspectiveCamera(26, 1, 30, 60000);
   let view2 = 'front', controls2 = null, splitOn = false;
   const target2 = new THREE.Vector3(45, 10, -4);
   function setView2(name){

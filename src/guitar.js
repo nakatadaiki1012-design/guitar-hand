@@ -219,16 +219,17 @@ export function buildGuitar(){
     const inner = insetPath(outline, 2.5);
     const sideGeo = uvScale(new THREE.ExtrudeGeometry(shapeOf(outline,[inner.slice().reverse()]), {depth:BODY_DEPTH-2*plate, bevelEnabled:false, curveSegments:SEG}), 1/400, 1/80);
     add(sideGeo, sideMat, m=>{ m.position.z = BODY_TOP - BODY_DEPTH + plate; });
-    // バインディング（縁の白いライン）
+    // バインディング（縁の白いライン）。表板・裏板の丸めた縁（外へ0.6mm）と面が重なるとちらつくので、
+    // 外側は縁より1mm外、上下の面は表板・裏板より0.3mm外に出して、どこも同じ位置に面が重ならないようにする
     const bindIn = insetPath(outline, 2.2);
-    const bindGeo = new THREE.ExtrudeGeometry(shapeOf(insetPath(outline,-0.6),[bindIn.slice().reverse()]), {depth:2.6, bevelEnabled:false});
+    const bindGeo = new THREE.ExtrudeGeometry(shapeOf(insetPath(outline,-1.0),[bindIn.slice().reverse()]), {depth:3.3, bevelEnabled:false});
     add(bindGeo, binding, m=>{ m.position.z = BODY_TOP - 3.0; });
-    add(bindGeo, binding, m=>{ m.position.z = BODY_TOP - BODY_DEPTH + 0.4; });
+    add(bindGeo, binding, m=>{ m.position.z = BODY_TOP - BODY_DEPTH - 0.3; });
     // サウンドホールの奥（暗い）とロゼッタ（飾りの輪）
     add(new THREE.CircleGeometry(SH_R+1, 64), dark, m=>{ m.position.set(SH_X, 0, BODY_TOP-60); m.castShadow = false; });
     [[SH_R+4, SH_R+5.2, '#1a0e07'], [SH_R+5.2, SH_R+8.4, '#e2d3b0'], [SH_R+8.4, SH_R+9.2, '#1a0e07'], [SH_R+9.2, SH_R+9.8, '#b58a5a'],
      [SH_R+11.5, SH_R+12.3, '#1a0e07'], [SH_R+12.3, SH_R+13.1, '#e2d3b0']].forEach(([a,b,c])=>{
-      add(new THREE.RingGeometry(a, b, 96), std({color:c, roughness:0.4}), m=>{ m.position.set(SH_X, 0, BODY_TOP+0.04); m.castShadow=false; });
+      add(new THREE.RingGeometry(a, b, 96), std({color:c, roughness:0.4}), m=>{ m.position.set(SH_X, 0, BODY_TOP+0.2); m.castShadow=false; });   // 表板から少し浮かせる（重なってちらつかないように）
     });
     // ピックガード（サウンドホールの下・1弦側の涙の形）
     const rr = SH_R + 14.5, arc = [];
