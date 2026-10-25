@@ -2,8 +2,8 @@
    右手のストローク
    ・手の形：ピックを持つ。人差し指を軽く曲げ、その指先の節の横と親指の先の腹でピックをつまむ。中指〜小指はその後ろに軽く握り込む。
              ピックの先（とがった所）が指から7mmほど出て、そこで弦を弾く
-   ・腕の向き：前腕はギターの尾側（ボディのおしり側）から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横で約90°）
-   ・動き　：腕は止めたまま、手の甲を軸にして指先側を回して弾く（手の甲はあまり動かない）
+   ・腕の向き：前腕はボディのおしり側・6弦側の縁を斜めに越えて来る（指弾きと同じ。ひじは体の横）
+   ・動き　：ひじを中心に腕ごと振る分（4割）と、手の甲を軸に手首から先を回す分（6割）を合わせて弾く。手首のしなり・前腕のひねりも加える
              ダウン（6弦→1弦）もアップ（1弦→6弦）も、ピックの先で弦を弾く
    ・弾かない拍（空ピッキング）でも手は止めず、弦から少し浮かせて振り続ける
    ========================================================= */
@@ -14,7 +14,7 @@ import { makeThumbModel, solveThumbTo } from './thumb.js';
 export { STRUM_X };                          // 弾く場所（geom.js：アコギはサウンドホールの上、エレキはピックアップの間）
 export const PICK_TIP = 14;
 const PICK_DEPTH = 1.0;                      // ピックの先が弦の下面より何mm深く通るか                  // ピックの中心から先までの長さ（mm）
-export const STRUM_AMP = 0.42;               // 振りの大きさ（ラジアン）：6本の弦を越えるくらい
+export const STRUM_AMP = 0.47;               // 振りの大きさ（ラジアン）：6本の弦を越えるくらい
 
 const CFG = {
   wristFlex: 32,                             // 手首は手のひら側へ軽く曲げるだけ（横には曲げない）
@@ -23,11 +23,14 @@ const CFG = {
   splay: {1:6, 2:0, 3:-7, 4:-15},            // 指を軽く寄せる（度）
   pivotUp: 120,                              // 腕で振る時の中心：弦から客席側へ何mmか
   rollBias: -12,                             // 構えの時から、前腕を小指側へ少しひねっておく（度）
-  armFollow: 0,                              // 弦の上の動きのうち、腕ごと動く割合（0：腕は止めて、手の甲を軸に回して弾く）
+  armFollow: 0.4,                            // 弦の上の動きのうち、腕ごと（ひじを中心に）動く割合。残りは手の甲を軸に回す
+  armLen: 260,
+  wristPivot: false,                               // 手の甲からひじまで（mm）：腕はひじを中心に振れる
   backDepth: 14,                             // 回す軸：手の甲の表面（骨から甲側へ何mmか）
-  elbow: [0.84, -0.30, -0.45],               // 手首→ひじの向き：前腕はギターの尾側から、ボディの上の方をほぼ水平に横切って来る（ひじは体の横）
+  elbow: [0.60, -0.75, -0.15],               // 手首→ひじの向き：前腕はボディのおしり側・6弦側の縁を斜めに越えて来る（指弾きと同じ。ひじは体の横）
 };
 
+if(typeof window !== 'undefined') window.__strumCfg = CFG;   // 検証用（構えの数値を外から変えて試す）
 const R3 = (axis, a, v) => { const k = norm(axis), c = Math.cos(a), s = Math.sin(a);
   return add(add(mul(v,c), mul(cross(k,v),s)), mul(k, dot(k,v)*(1-c))); };
 
@@ -108,7 +111,8 @@ export function rightHandPose(rig, st){
   // 手の甲の位置は固定：しなり・ひねりを加えても甲はその場にあり、指先側だけが動く
   const bend0 = v => R3(F, CFG.rollBias*DEG, v), toW0 = v => bend0(toW(v));
   const B = add(sub(target, toW0(hit)), toW0(back));
-  const W = sub(B, toWb(back));
+  // 手首のしなり・ひねりは、手首を中心に回す（手首はその場、手先がしなる）。wristPivot が false なら、手の甲を固定して手首側が動く
+  const W = CFG.wristPivot ? sub(B, toW0(back)) : sub(B, toWb(back));
   // 手の甲を軸に回して、指先が弦の上を動く（甲から指先までの距離に合わせて角度を決める）。
   // 指先は弦の面に沿って動くように高さを補正する（弦を越えたら少し浮く）
   const pivot = B;
@@ -135,8 +139,10 @@ export function rightHandPose(rig, st){
   // 見えている腕は手首の少し先までなので、前腕は手首からそのまま伸ばす
   // （手首で強く折ると、短い腕の皮膚がねじれてギザギザに見えるため）。少しだけ前腕の向きに寄せる
   // 前腕はあまり動かない（手首から先が主に動く）
-  const dirArm = v => v;                                          // 前腕は動かさない（手首から先だけが回る）
-  const fa = norm(add(mul(dirArm(F), 0.8), mul(dirArm(fa0), 0.2)));
+  // 前腕：ひじの位置は動かさず、手首の動きに合わせてひじを中心に振れる（腕ごと振る）
+  const E = sub(B, mul(fa0, CFG.armLen));
+  const fa = norm(sub(Wp, E));
+  const dirArm = v => v;
   const Ur = dirArm(R3(F, rollA*0.8, U));                                // 前腕の回転（回内・回外）なので前腕もひねる
   out.push({name:'forearm', pos: Wp, fwd: fa, dorsal: sub(Ur, mul(fa, dot(Ur,fa)))});
   for(const j of J) out.push({name: j.name, pos: place(add(W, toWb(j.pos))), fwd: norm(dir(toWb(j.fwd))), dorsal: norm(dir(toWb(j.dorsal)))});

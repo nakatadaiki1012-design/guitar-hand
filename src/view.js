@@ -22,7 +22,7 @@ export const VIEWS = {
   front: {label:'正面', el:8, az:3, dist:390, name:'正面（向かい合った先生から）'},
   side:  {label:'横から', el:14, az:-72, dist:370,  name:'横から（ヘッド側から）'},
   both:  {label:'全体', el:12, az:12, dist:1500,  name:'全体（ギターと両手）', fixed:()=>[300, 15, -30]},
-  right: {label:'右手', el:30, az:28, dist:600,  name:'右手（ストロークを見る）', fixed:()=>[STRUM_X, 0, 25]}
+  right: {label:'右手', el:22, az:-25, dist:600,  name:'右手（ストロークを見る）', fixed:()=>[STRUM_X, 0, 25]}   // ネック側の斜め上から（腕は向こうへ伸びるので、手とピックがよく見える）
 };
 const UP = [0,-1,0];
 
