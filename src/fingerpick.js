@@ -19,17 +19,18 @@ const CFG = {
   palmHint: [0.0, 0.3, -1.0],    // 手のひらはだいたい表板の方
   wristFlex: 15,                 // 手首を手のひら側へ曲げる角度（軽く）
   wristRoll: -20,                // 前腕のひねり（度）：親指側を少し起こす
-  fan: {1: 6, 2: 0, 3: -6},      // 指先の前後の位置（mm）：人差し指はブリッジ寄り、薬指はネック寄り
-  thumbX: -22,                   // 親指の先は、ほかの指より 22mm ネック寄り（指の前に出る）
+  fan: {1: -11, 2: 0, 3: 18},    // 指先の前後の位置（mm）：つけ根の並びと同じく、人差し指はネック寄り・薬指はブリッジ寄り（逆にすると指が交差する）
+  thumbX: -26,                   // 親指の先は、中指より 26mm ネック寄り（人差し指の前に出る）
   pad: 8,                        // 指先の関節から、弦に当たる指の腹の点まで（mm）
-  thumbShift: 5,                 // 親指が弦を1本移るごとに、手ごと動く量（mm）
+  away: 5,                       // 弾き終わって戻る時は、弦から5mm浮かせて戻る（鳴っている弦に触れて音を止めない）。次に弾く直前に弦へ下りる
+  thumbShift: 8,                 // 親指が弦を1本移るごとに、手ごと動く量（mm）
   knuckleBack: 25, knuckleUp: 75,// 中指のつけ根は、中指の指先の「構えの位置」から、手首側へ24mm・表板から離れる方へ68mm（指は付け根40°・第二関節50°ほどの自然な曲げ）
   splay: {1: 2, 2: 0, 3: -2, 4: -4},   // 指はほぼそろえて、平行に下ろす
   // 弾く動き：弦に添えた位置（rest）→ 弾き終わりの位置（through）。y：1弦側が＋、z：客席側が＋
   //   指（i・m・a）：弦の1弦側に添え、手のひらの方（6弦側・上）へ弦をはじいて、少し浮く
   //   親指（p）　　：弦の6弦側に添え、下（1弦側）へ押して、少し浮く
   rest:    {dy:  2.5, dz: 2.2},
-  through: {dy: -7.0, dz: 8.0},
+  through: {dy: -5.0, dz: 9.0},   // はじいたあとは、となりの弦の手前で止めて上へ抜ける（となりの指に重ならない）
   thumbRest:    {dy: -3.0, dz: 3.5},
   thumbThrough: {dy:  9.0, dz: 7.0},
 };
@@ -74,8 +75,8 @@ export function fingerPose(rig, st){
   const pluck = st.pluck || {};
   // 指先の目標（弦に添えた位置〜弾き終わり）
   const tipTarget = (f, s) => {
-    const u = ease(pluck[f] || 0), x = X0 + CFG.fan[f], y0 = strYf(s, x), z0 = stringZ(x);
-    return [x, y0 + CFG.rest.dy + (CFG.through.dy - CFG.rest.dy)*u, z0 + CFG.rest.dz + (CFG.through.dz - CFG.rest.dz)*u*u];
+    const u = ease(pluck[f] || 0), x = X0 + CFG.fan[f], y0 = strYf(s, x), z0 = stringZ(x), aw = (st.away && st.away[f]) || 0;
+    return [x, y0 + CFG.rest.dy + (CFG.through.dy - CFG.rest.dy)*u, z0 + CFG.rest.dz + (CFG.through.dz - CFG.rest.dz)*Math.pow(u, 1.3) + CFG.away*aw];
   };
   // 手首の位置：中指のつけ根が、中指の構えの位置から決まった所に来るように
   const Tm = (()=>{ const x = X0 + CFG.fan[2]; return [x, strYf(strings[2], x) + CFG.rest.dy, stringZ(x) + CFG.rest.dz]; })();   // 中指の構えの位置（弾く動きでは手は動かさない）
@@ -88,15 +89,19 @@ export function fingerPose(rig, st){
   out.push({name:'forearm', pos: W, fwd: fa0, dorsal: norm(sub(Ua, mul(fa0, dot(Ua, fa0))))});
   const radial = norm(toW(sub(rest[jointName(1,1)], rest[jointName(2,1)])));
   const tips = {}, errs = {}, angs = {};
+  const KL = norm(toW(sub(rest[jointName(4,1)], rest[jointName(1,1)])));   // つけ根の並びの向き（人差し指→小指）
+  // 小指は弾かない：薬指のすぐ後ろ（1弦より外・少し浮かせた所）に、薬指と同じように曲げてついていく
+  const T4f = () => { const x = X0 + CFG.fan[3] + 20; return [x, strYf(5, x) + 1, stringZ(x) + 26]; };
   for(let f=1; f<=4; f++){
     const M = add(W, toW(rest[jointName(f,0)])), K = add(W, toW(rest[jointName(f,1)]));
     let d0 = norm(toW(sub(rest[jointName(f,4)], rest[jointName(f,1)])));
     const sp = CFG.splay[f]*DEG; d0 = norm(add(mul(d0, Math.cos(sp)), mul(radial, -Math.sin(sp))));
-    const n1 = norm(sub(N, mul(d0, dot(d0, N))));
     const L = rig.lengths[f];
-    // 小指は弾かない：薬指のすぐ後ろ（1弦より外・少し浮かせた所）に、薬指と同じように曲げてついていく
-    const T4 = (()=>{ const x = X0 + CFG.fan[3] - 7; return [x, strYf(5, x) + 13, stringZ(x) + 11]; })();
-    const pts = solveFinger(L, K, f === 4 ? T4 : tipTarget(f, strings[f]), d0, n1);
+    // 指を曲げる面：つけ根の並び（手の X 軸）に直角な面。指は横には折れず、まっすぐ前へ丸まる（第二関節が横へ飛び出さない）
+    const Tf = f === 4 ? null : tipTarget(f, strings[f]);
+    const toT = norm(sub(f === 4 ? T4f() : Tf, K));
+    let n1 = norm(cross(KL, toT)); if(dot(n1, N) < 0) n1 = mul(n1, -1);
+    const pts = solveFinger(L, K, f === 4 ? T4f() : Tf, d0, n1);
     const axis = norm(cross(d0, n1));
     out.push({name: jointName(f,0), pos: M, fwd: norm(sub(K, M)), dorsal: U});
     for(let i=0;i<4;i++){
@@ -105,14 +110,15 @@ export function fingerPose(rig, st){
     }
     tips[f] = add(pts[2], mul(norm(sub(pts[3], pts[2])), L[2] + CFG.pad));
     if(f < 4) errs[f] = vlen(sub(tips[f], tipTarget(f, strings[f])));
-    { const v1 = norm(sub(pts[1], pts[0])), v2 = norm(sub(pts[2], pts[1]));
-      angs[f] = {mcp: Math.atan2(dot(v1, n1), dot(v1, d0))/DEG, pip: Math.acos(Math.max(-1, Math.min(1, dot(v1, v2))))/DEG}; }
+    { const v0 = norm(sub(K, M)), v1 = norm(sub(pts[1], pts[0])), v2 = norm(sub(pts[2], pts[1]));
+      const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, dot(a, b))))/DEG;
+      angs[f] = {mcp: ang(v0, v1)*Math.sign(dot(sub(v1, v0), N) || 1), pip: ang(v1, v2)}; }
   }
   // 親指：ベースの弦の6弦側に添え、弾く時は1弦側へ
   const mv = (R, v) => [dot(R[0],v), dot(R[1],v), dot(R[2],v)];
   rig.thumbModelFP ||= makeThumbModel(THUMB_JOINTS.map(n=>rest[n]), THUMB_JOINTS.map(n=>rig.restBasis[n]), [0,-1,0], rest[jointName(1,1)]);
   const ut = ease(pluck.t || 0), ts = st.thumbS ?? 1, tx = X0 + CFG.thumbX;
-  const tT = [tx, strYf(ts, tx) + CFG.thumbRest.dy + (CFG.thumbThrough.dy - CFG.thumbRest.dy)*ut, stringZ(tx) + CFG.thumbRest.dz + (CFG.thumbThrough.dz - CFG.thumbRest.dz)*ut*ut];
+  const tT = [tx, strYf(ts, tx) + CFG.thumbRest.dy + (CFG.thumbThrough.dy - CFG.thumbRest.dy)*ut, stringZ(tx) + CFG.thumbRest.dz + (CFG.thumbThrough.dz - CFG.thumbRest.dz)*ut*ut + CFG.away*((st.away && st.away.t) || 0)];
   const tl = toL(sub(tT, W));
   const key = tl.map(v => Math.round(v/1.5)).join(',');
   rig._fpThumb ||= new Map();
@@ -151,7 +157,7 @@ export function fingerPlanRight(events, bs){
 }
 const PRE = 0.035, POST = 0.05, BACK = 0.18;
 export function fingerStateAt(plan, t){
-  const st = {mode:'finger', strings:{1:3, 2:4, 3:5}, thumbS: 1, pluck:{}, lift: 0};
+  const st = {mode:'finger', strings:{1:3, 2:4, 3:5}, thumbS: 1, pluck:{}, away:{}, lift: 0};
   for(const d of ['t', 1, 2, 3]){
     const list = plan[d]; if(!list.length) continue;
     let i = -1; for(let k=0;k<list.length;k++){ if(list[k].t - PRE <= t) i = k; else break; }
@@ -168,8 +174,15 @@ export function fingerStateAt(plan, t){
         s = prev.s + (next.s - prev.s)*ease(w);
       }
     }
+    // 浮かせ：弾き終わったら浮かせ、次に弾く 0.12 秒前から弦へ下りる
+    let aw = 0;
+    if(prev && t >= prev.t + POST){
+      const down0 = next ? next.t - PRE - 0.12 : Infinity, down1 = next ? next.t - PRE : Infinity;
+      aw = Math.min(1, (t - prev.t - POST)/0.06);
+      if(t > down0) aw *= Math.max(0, (down1 - t)/(down1 - down0));
+    }
     if(d === 't') st.thumbS = s; else st.strings[d] = s;
-    st.pluck[d] = u;
+    st.pluck[d] = u; st.away[d] = aw;
   }
   return st;
 }
