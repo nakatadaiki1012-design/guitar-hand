@@ -10,7 +10,7 @@ import { createView, VIEWS } from './view.js';
 import { BACKDROPS } from './backdrop.js';
 import { FINISHES } from './guitar.js';
 import { GUITARS, NSTR, strY, STRUM_X } from './geom.js';
-import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventChord, eventPressed, noteName, fingerPlan } from './tab.js';
+import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventChord, eventPressed, noteName, fingerPlan, applyChordHold } from './tab.js';
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
@@ -185,6 +185,7 @@ function setChord(name, animate=true){
   state.root = root; state.type = type;
   document.getElementById('chordName').textContent = name;
   const R = ROOTS.find(r=>r.id===root), T = TYPES.find(t=>t.id===type);
+  document.getElementById('difficulty').innerHTML = '';
   document.getElementById('chordReading').textContent = `${R.read}・${T.read}` + (capo() ? `（カポ${capo()}・実際の音は ${soundingName(name)}）` : '');
   if(!playing()) showStrip([name]);
   updateButtons();
@@ -708,7 +709,8 @@ renderSong();
 const tabs = {list:[], idx:0, running:false, timer:null, t0:0, bs:0.6, next:0, hl:-1, prep:0, shown:-1};
 const TAB = () => tabs.list[tabs.idx];
 function loadTabSongs(){
-  tabs.list = TAB_SONGS.map(sg=>({...sg, ...parseCompact(sg.tab)}));
+  // 伴奏のコードがある曲は、コードの形を押さえたまま弾く
+  tabs.list = TAB_SONGS.map(sg=>{ const r = parseCompact(sg.tab); applyChordHold(r.events, sg.chords, sg.pickup); return {...sg, ...r}; });
   try{ for(const sg of JSON.parse(localStorage.getItem('guitarTabImports') || '[]')) tabs.list.push(sg); }catch(e){}
 }
 const saveImports = () => { try{ localStorage.setItem('guitarTabImports', JSON.stringify(tabs.list.filter(t=>t.imported), (k,v)=>k === 'plan' ? undefined : v)); }catch(e){} };
@@ -718,7 +720,7 @@ function renderTabList(){
   tabList.innerHTML = '';
   tabs.list.forEach((sg,i)=>{
     const b = document.createElement('button'); b.className = 'chip' + (sg.imported ? ' imp' : ''); b.textContent = (sg.imported ? '📥 ' : '') + (sg.short || sg.title) + (sg.chords ? ' ♫' : '');
-    if(sg.chords) b.title = 'メロディ＋伴奏（ベース）のソロギター';
+    if(sg.chords) b.title = 'コードを押さえたまま、ベース・アルペジオ・メロディを弾くソロギター';
     b.classList.toggle('on', i === tabs.idx);
     b.onclick = ()=>selectTab(i);
     tabList.appendChild(b);
@@ -785,9 +787,10 @@ function tabEventPose(sg, i){
   const k = capo(), hover = k ? Object.fromEntries(Object.entries(pl.hover).map(([f,[s,fr,l]])=>[f, [s, fr + k, l]])) : pl.hover;
   const pose = computeTabPose(shiftChord(eventChord(e)), view.rig, (e.P || 1) + k, hover, pl.grip, pl.home);
   const open = e.notes.filter(n=>!n.f).map(n=>n.s);
-  return open.length ? {...pose, openStr: open} : pose;
+  const held = (e.hold || []).map(n=>n.s);                        // コードの形で押さえているだけの弦（光らせない）
+  return open.length || held.length ? {...pose, openStr: open, held} : pose;
 }
-// 3D画面の上の表示：いまの音の名前と、弦・フレット・指。左下には「いま → 次」
+// 見出しの表示：いまの音の名前と、弦・フレット・指。その下に、押さえ方と次の音
 function showTabEvent(i, still=false){
   const sg = TAB(), e = sg.events[i]; if(!e) return;
   if(tabs.shown === i && !still) return; tabs.shown = i;
@@ -797,8 +800,10 @@ function showTabEvent(i, still=false){
   stripKey = '';
   sg.plan ||= fingerPlan(sg.events);
   const gname = {spread:'指を開く形', diag:'斜めの形'}[sg.plan[i].grip];
-  chordCard.innerHTML = `<div class="tabnow"><b>いま・${e.P||1}ポジション・${gname}</b>${e.notes.map(noteLabel).join('<br>')}</div>` +
-    (nx ? `<b class="arr">→</b><div class="tabnow next"><b>次</b>${nx.notes.map(noteLabel).join('<br>')}</div>` : '');
+  // 「いま・次」は3D画面にかぶせず、上の見出しの下に小さく出す（手が見えなくならないように）
+  chordCard.innerHTML = '';
+  document.getElementById('difficulty').innerHTML = `<span class="tabhead">${e.chord ? e.chord + 'を押さえたまま' : (e.P||1) + 'ポジション・' + gname}</span>` +
+    (nx ? `<span class="tabnext">次：${nx.notes.map(noteLabel).join(' ／ ')}</span>` : '');
   if(still && view){ const now = performance.now(), nx = tabEventPose(sg, i); poseFrom = poseTo ? currentPose(now) : null; tweenStart = now; tweenDur = 160; poseTo = window.__pose = nx; kick(); }
 }
 // 右手：ピックの先の横の位置（mm）→ 振りの角度

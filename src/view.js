@@ -166,6 +166,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
       m.ring.position.set(x, y, FRET_TOP + STRING_R[s] + 0.2);
       m.glow.position.set(x, y, FRET_TOP + 1.2);
       m.ring.visible = m.glow.visible = ghost;
+      if(pose.held && pose.held.includes(s)) m.glow.visible = false;   // コードの形で押さえているだけの所は光らせない（弾く所だけ光る）
     }
   }
   // 右手（ストローク用）。肌の質感は左手と同じ

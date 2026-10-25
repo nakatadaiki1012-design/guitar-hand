@@ -8,7 +8,7 @@
    ・どの弦のどのフレットで弾くか・どの指で押さえるかは、手の移動がいちばん少なくなるように自動で決める
      （1つのフレットに1本の指＝人差し指の位置「ポジション」を決めて、そこから中指・薬指・小指）
    ========================================================= */
-import { STRING_MIDI } from './data.js';
+import { STRING_MIDI, getChord, resolveChord } from './data.js';
 
 const NS = 6, MAX_F = 15;
 const NOTE_NAMES = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
@@ -312,14 +312,157 @@ function assignFingers(notes, P, held = {}){
   return notes;
 }
 
+/* ---------- コードを押さえたまま弾く（ソロギターの弾き方） ----------
+   伴奏のコードがある曲では、左手はそのコードの形を押さえたままにして、
+   ・弾く音がコードの中にある時：そのまま（押さえている指で鳴らすだけ。指は動かない）
+   ・コードにない音の時：空いている指（ふつうは小指）を足す。足せない時は、その弦のコードの指だけ一瞬はなす
+   ・どうしても形のまま弾けない時だけ、1音ずつの押さえ方にもどす
+   chords：[[コード名, 拍数], ...] の小節の並び（data.js の chords をそろえたもの）。pickup：弱起の拍数 */
+// ソロギターでよく使う、軽い押さえ方（Fは1・2弦だけ人差し指でセーハする小さいF）
+const SOLO_SHAPES = { F: {name:'F', frets:[-1,-1,3,2,1,1], fingers:[0,0,3,2,1,1], barre:{fret:1, finger:1, from:4, to:5}} };
+export function applyChordHold(events, chords, pickup = 0){
+  if(!chords || !chords.length) return;
+  const tl = []; let t = pickup;
+  for(const bar of chords) for(const [c, n] of bar){ tl.push({t, c}); t += n; }
+  const segAt = x => { let i = 0; tl.forEach((k, j) => { if(k.t <= x + 1e-6) i = j; }); return i; };
+  // コードが続くあいだ（1つのコードの区間）で、1音でも形のまま弾けない音があれば、その区間は1音ずつの押さえ方にする
+  // （区間の途中で、コードの形と1音ずつの形を行ったり来たりすると、手がばたつくので）
+  const fits = events.map(e => {
+    const r = resolveChord(tl[segAt(e.t)].c), ch = r && (SOLO_SHAPES[r.name] || getChord(r.name));
+    return ch ? {r, ch, res: holdFit(e.notes, ch)} : null;
+  });
+  const bad = new Set(events.map((e, i) => fits[i] && fits[i].res ? -1 : segAt(e.t)));
+  events.forEach((e, i) => {
+    if(!fits[i] || bad.has(segAt(e.t))) return;
+    const {r, ch, res} = fits[i];
+    e.notes = res.notes; e.hold = res.hold; e.barre = res.barre; e.chord = r.name;
+    // 手の位置（ポジション）はコードの形で決める（はなした指・足した指で手が動かないように）
+    const pr = [...res.notes, ...res.hold].filter(n => n.f > 0 && n.k);
+    const sp = ch.frets.map((f, s) => ({f, k: ch.fingers[s]})).filter(n => n.f > 0 && n.k);
+    e.P = Math.max(1, Math.min(...[...sp, ...pr].map(n => n.f - n.k + 1)));
+  });
+}
+// コードの形（ch）を押さえたまま notes を弾けるか。弾ける時は {notes, hold, barre}（hold：押さえているだけで弾かない音）
+function holdFit(notes, ch){
+  const barre = ch.barre ? {...ch.barre} : null;
+  const units = [];                                                   // はなしてもよい単位：指1本ずつ（セーハはまとめて1つ）
+  if(barre) units.push({barre: true, notes: []});
+  for(let s=0;s<NS;s++){
+    const f = ch.frets[s]; if(!(f > 0)) continue;
+    const k = ch.fingers[s];
+    if(barre && k === 1 && f === barre.fret && s >= barre.from && s <= barre.to){ units[0].notes.push({s, f, k}); continue; }
+    units.push({notes: [{s, f, k}]});
+  }
+  const played = new Map(notes.map(n => [n.s, n]));
+  // 弾く音とぶつかる単位（同じ弦で別のフレット。セーハは、それより低いフレットや開放弦を弾く時）は、はなすしかない
+  const must = units.map(u => u.barre ? u.notes.some(m => played.has(m.s) && played.get(m.s).f < barre.fret)
+                                       : u.notes.some(m => played.has(m.s) && played.get(m.s).f !== m.f));
+  const free = units.map((u, i) => i).filter(i => !must[i]);
+  let best = null;
+  // はなす単位の数が少ない順に試す（2本まで）
+  const subsets = [[]];
+  for(const i of free) subsets.push([i]);
+  for(let a=0;a<free.length;a++) for(let b=a+1;b<free.length;b++) subsets.push([free[a], free[b]]);
+  for(const drop of subsets){
+    const keep = units.filter((u, i) => !must[i] && !drop.includes(i));
+    const r = tryAssign(notes, keep, barre);
+    if(r && (!best || drop.length < best.drop || (drop.length === best.drop && r.cost < best.cost))) best = {...r, drop: drop.length};
+    if(best && best.drop < drop.length) break;
+  }
+  if(!best) return null;
+  return best;
+}
+function tryAssign(notes, keep, barre){
+  const hasBarre = keep.some(u => u.barre);
+  const kept = keep.flatMap(u => u.notes);
+  const at = new Map(kept.map(m => [m.s, m]));
+  const used = new Set(kept.map(m => m.k));
+  const out = notes.map(n => ({...n, k: 0}));
+  const extra = [];
+  for(const n of out){
+    if(n.f === 0) continue;
+    const m = at.get(n.s);
+    if(m && m.f === n.f) n.k = m.k;
+    else if(hasBarre && n.f === barre.fret && n.s >= barre.from && n.s <= barre.to) n.k = 1;
+    else extra.push(n);
+  }
+  // コードにない音：空いている指をためす
+  const freeK = [1,2,3,4].filter(k => !used.has(k) && !(hasBarre && k === 1));
+  let best = null;
+  const tryK = (i, taken) => {
+    if(i === extra.length){
+      const all = [...kept.filter(m => !out.some(n => n.s === m.s)), ...out.filter(n => n.f > 0)];
+      const nb = all.filter(m => !(hasBarre && m.k === 1));
+      // 新しく足した指は、ほかの指と順番どおり（フレットが低いほど若い指、同じフレットなら太い弦ほど若い指）
+      for(const n of extra) for(const m of nb){
+        if(m === n) continue;
+        if(m.k === n.k) return;
+        if(m.f !== n.f ? (m.f < n.f) !== (m.k < n.k) : (m.s < n.s) !== (m.k < n.k)) return;
+        // 指と指の間は1フレットまで（人差し指・中指は、もう1フレット広げてもよい。薬指と小指の間は広がらない）
+        const dk = Math.abs(m.k - n.k), wide = (m.k <= 2 || n.k <= 2) ? 1 : 0;
+        if(Math.abs(m.f - n.f) > dk + wide) return;
+      }
+      if(hasBarre && extra.some(n => n.f <= barre.fret)) return;
+      // 手を広げすぎない（どの指も「自分のフレット」から1つまでのずれ）
+      const off = nb.map(m => m.f - m.k);
+      const span = off.length ? Math.max(...off) - Math.min(...off) : 0;
+      if(span > 1) return;
+      const fs = all.map(m => m.f);
+      if(Math.max(...fs) - Math.min(...fs) > 3) return;               // 4フレットより広くは広げない
+      // 足す指は、手の位置から見て「そのフレットの担当の指」に近いほどよい
+      const base = nb.filter(m => !extra.includes(m)).reduce((b, m) => Math.min(b, m.f - m.k + 1), 99);
+      if(base !== 99 && extra.some(n => n.f - base > 3)) return;      // 押さえている形の手の位置から、4フレットより先には届かない
+      const cost = span + extra.reduce((c, n) => c + 0.5*Math.abs(n.k - Math.min(4, Math.max(1, n.f - (base === 99 ? n.f : base) + 1))), 0);
+      if(!best || cost < best.cost) best = {cost, ks: extra.map(n => n.k)};
+      return;
+    }
+    for(const k of freeK){ if(taken.has(k)) continue; extra[i].k = k; taken.add(k); tryK(i + 1, taken); taken.delete(k); }
+    extra[i].k = 0;
+  };
+  tryK(0, new Set());
+  if(!best) return null;
+  extra.forEach((n, i) => n.k = best.ks[i]);
+  const hold = kept.filter(m => !out.some(n => n.s === m.s)).map(m => ({...m}));
+  const bk = hasBarre ? {...barre} : null;
+  return {notes: out, hold, barre: bk, cost: best.cost};
+}
+
+/* ---------- 押さえた指は、すぐには離さない ----------
+   弾き終わった指も、次のどれかになるまでは押さえたままにする（実際の弾き方と同じ。指の動きも少なくなる）
+   ・その指で別の所を押さえる　・その弦を別のフレットや開放で弾く　・手の位置（ポジション）やコードが変わる
+   ・ほかの指の押さえ方と、指の順番や広げ方が合わない　・3拍たった
+   押さえたままの所は e.hold に入る（光らせない） */
+const okPair = (a, b) => a.k !== b.k && (a.f !== b.f ? (a.f < b.f) === (a.k < b.k) : (a.s < b.s) === (a.k < b.k))
+  && Math.abs(a.f - b.f) <= Math.abs(a.k - b.k) + ((a.k <= 2 || b.k <= 2) ? 1 : 0);
+function sustainFingers(events){
+  if(events.sustained) return;
+  events.sustained = true;
+  let down = [], prev = null;
+  for(const e of events){
+    if(prev && (e.P !== prev.P || (e.chord || '') !== (prev.chord || ''))) down = [];
+    const all = [...e.notes, ...(e.hold || [])];
+    const now = all.filter(n => n.f > 0 && n.k);
+    const usedK = new Set(now.map(n => n.k)), usedS = new Set(all.map(n => n.s));
+    if(e.barre) for(let s=e.barre.from; s<=e.barre.to; s++) usedS.add(s);
+    const keep = down.filter(d => !usedK.has(d.k) && !usedS.has(d.s) && e.t - d.t <= 3 + 1e-6
+      && d.f >= (e.P || 1) && d.f <= (e.P || 1) + 3 && now.every(n => !(e.barre && n.k === 1 && d.k > 1 && d.f > e.barre.fret) ? okPair(d, n) : true));
+    if(keep.length) e.hold = [...(e.hold || []), ...keep.map(d => ({s: d.s, f: d.f, k: d.k, m: STRING_MIDI[d.s] + d.f}))];
+    const nd = new Map();
+    for(const d of keep) nd.set(d.k, d);
+    for(const n of e.notes) if(n.f > 0 && n.k) nd.set(n.k, {s: n.s, f: n.f, k: n.k, t: e.t});
+    down = [...nd.values()];
+    prev = e;
+  }
+}
+
 /* ---------- できごと → 手の形を計算するための「コード」 ---------- */
 export function eventChord(e){
   const frets = Array(NS).fill(-2), fingers = Array(NS).fill(0);
-  for(const n of e.notes){ frets[n.s] = n.f; fingers[n.s] = n.k || 0; }
-  const name = 'tab:' + e.notes.map(n=>`${n.s}.${n.f}.${n.k}`).join('_') + (e.barre ? 'b' : '');
+  for(const n of [...(e.hold || []), ...e.notes]){ frets[n.s] = n.f; fingers[n.s] = n.k || 0; }
+  const name = 'tab:' + e.notes.map(n=>`${n.s}.${n.f}.${n.k}`).join('_') + (e.hold && e.hold.length ? '+' + e.hold.map(n=>`${n.s}.${n.f}.${n.k}`).join('_') : '') + (e.barre ? 'b' + e.barre.fret + '.' + e.barre.from : '');
   return {name, frets, fingers, barre: e.barre || null, melody: true};
 }
-export const eventPressed = e => e.notes.some(n=>n.f > 0);
+export const eventPressed = e => e.notes.some(n=>n.f > 0) || !!(e.hold && e.hold.length);
 
 /* ---------- メロディの指の動き（むだな動きを少なく・自然に） ----------
    ・ポジション（人差し指のフレット P）ごとに、手の構えを2つから選ぶ（前後の音を見て決める）
@@ -333,6 +476,7 @@ export const eventPressed = e => e.notes.some(n=>n.f > 0);
    ・まだ使っていない指は、自分のフレットの上で、そのポジションでよく弾く弦の上に浮かせて待つ
    返り値：音ごとに {hover: {指: [弦, フレット, 浮かせる高さ]}, grip, home} */
 export function fingerPlan(events){
+  sustainFingers(events);
   const plan = [];
   let P = null, last = {}, home = 3, grip = 'spread';
   for(let i=0;i<events.length;i++){
@@ -341,14 +485,15 @@ export function fingerPlan(events){
       P = e.P; last = {};
       // このポジションのあいだに弾く音を見て、構えと、指を待たせる弦を決める
       let sum = 0, n = 0, maxRel = 0, pinky = false; const strs = new Set();
-      for(let j=i; j<events.length && events[j].P === P; j++) for(const nt of events[j].notes) if(nt.f > 0){
+      for(let j=i; j<events.length && events[j].P === P; j++) for(const nt of [...events[j].notes, ...(events[j].hold || [])]) if(nt.f > 0){
         sum += nt.s; n++; strs.add(nt.s); maxRel = Math.max(maxRel, nt.f - P); if(nt.k === 4) pinky = true;
       }
       home = n ? Math.round(sum/n) : 3;
       grip = (pinky || maxRel >= 3 || strs.size >= 3) ? 'spread' : 'diag';
     }
+    const en = [...e.notes, ...(e.hold || [])];   // 押さえている音（弾く音＋コードの形で押さえたままの音）
     const pressing = new Set(), played = new Set(e.notes.map(n=>n.s));
-    for(const n of e.notes) if(n.f > 0 && n.k){ pressing.add(n.k); last[n.k] = {s: n.s, f: n.f}; }
+    for(const n of [...e.notes, ...(e.hold || [])]) if(n.f > 0 && n.k){ pressing.add(n.k); last[n.k] = {s: n.s, f: n.f}; }
     if(e.barre) pressing.add(1);
     const hover = {};
     for(let k=1;k<=4;k++){
@@ -359,13 +504,13 @@ export function fingerPlan(events){
       // さっきの場所で待つと指が重なる・交差する時はよける：
       //  ・押さえている指のすぐそば（同じ弦・1フレット以内）
       //  ・指の順番が逆になる（例：薬指が3フレットを押さえているのに、小指が3フレットの上で待つ → 小指が薬指の下にもぐる）
-      const near = l && e.notes.some(n => n.f > 0 && n.s === l.s && Math.abs(n.f - l.f) <= 1);
-      const flip = l && e.notes.some(n => n.f > 0 && n.k && ((n.k < k && n.f >= l.f) || (n.k > k && n.f <= l.f)));
+      const near = l && en.some(n => n.f > 0 && n.s === l.s && Math.abs(n.f - l.f) <= 1);
+      const flip = l && en.some(n => n.f > 0 && n.k && ((n.k < k && n.f >= l.f) || (n.k > k && n.f <= l.f)));
       if(l && !near && !flip) hover[k] = [l.s, l.f, (played.has(l.s) ? 4 : 2.2) + nb];
       else if(l){                                                   // 自分のフレット（押さえている指より順番どおりの側）の上へよける
         let fr = P + k - 1;
-        for(const n of e.notes) if(n.f > 0 && n.k){ if(n.k < k) fr = Math.max(fr, n.f); if(n.k > k) fr = Math.min(fr, n.f - 1); }
-        const s2 = e.notes.some(n => n.f > 0 && n.s === l.s && Math.abs(n.f - fr) <= 1) ? Math.min(5, l.s + 1) : l.s;
+        for(const n of en) if(n.f > 0 && n.k){ if(n.k < k) fr = Math.max(fr, n.f); if(n.k > k) fr = Math.min(fr, n.f - 1); }
+        const s2 = en.some(n => n.f > 0 && n.s === l.s && Math.abs(n.f - fr) <= 1) ? Math.min(5, l.s + 1) : l.s;
         hover[k] = [s2, Math.max(1, fr), 5];
       }
       else if(grip === 'diag') hover[k] = [home, P + Math.min(k - 1, 2), 3.5 + (k === 4 ? 1.5 : 0) + nb];   // 斜めの形：小指は薬指のそばで待つ
@@ -377,7 +522,7 @@ export function fingerPlan(events){
       if(!hover[k]) continue;
       const f0 = hover[k][1];
       let lb = 1, ub = P + 3;                                       // 押さえている指から決まる、待ってよいフレットの範囲
-      for(const n of e.notes) if(n.f > 0 && n.k){ if(n.k > k) ub = Math.min(ub, n.f); if(n.k < k) lb = Math.max(lb, n.f); }
+      for(const n of en) if(n.f > 0 && n.k){ if(n.k > k) ub = Math.min(ub, n.f); if(n.k < k) lb = Math.max(lb, n.f); }
       let fr = f0;
       for(let j=1;j<k;j++) if(hover[j] && hover[j][1] >= fr) fr = hover[j][1] + 1;   // 若い指より手前では待たない
       if(ub >= lb) fr = Math.max(lb, Math.min(ub, fr));
