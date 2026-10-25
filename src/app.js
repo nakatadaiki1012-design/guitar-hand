@@ -111,6 +111,10 @@ function ensureAudio(){
     tone.lp = actx.createBiquadFilter(); tone.lp.type='lowpass';
     master.connect(tone.body); tone.body.connect(tone.lp); tone.lp.connect(actx.destination);
     setTone();
+    // 弦の音を、ひまな時に1つずつ先に作っておく（初めて鳴らす音で引っかからないように）
+    const notes = []; for(let m=40; m<=84; m++) notes.push(m);
+    const warm = () => { if(notes.length){ pluckBuffer(notes.shift()); setTimeout(warm, 40); } };
+    setTimeout(warm, 200);
   }
   if(actx.state==='suspended') actx.resume();
 }
@@ -852,12 +856,15 @@ async function startTab(){
   sg.plan ||= fingerPlan(sg.events);
   const todo = sg.events.map((e,i)=>[eventChord(e), e.P||1, sg.plan[i]]);   // [コード, ポジション, 指の動き]
   const run = ++tabs.prep;
-  for(let k=0;k<todo.length;k++){
-    btn.textContent = `準備中 ${k}/${todo.length}`;
-    tabEventPose(sg, k);
-    await new Promise(r=>setTimeout(r, 0));
-    if(run !== tabs.prep) return;                                 // 準備中にストップや曲の変更があった
-  }
+  tabs.preparing = true;                                          // 準備の間は、ほかの先読み計算を止める
+  try{
+    for(let k=0;k<todo.length;k++){
+      btn.textContent = `準備中 ${k}/${todo.length}`;
+      tabEventPose(sg, k);
+      await new Promise(r=>setTimeout(r, 0));
+      if(run !== tabs.prep) return;                               // 準備中にストップや曲の変更があった
+    }
+  } finally { if(run === tabs.prep) tabs.preparing = false; }
   tabs.bs = beatSec(+tabBpm.value);
   const cin = sg.beats + (sg.pickup || 0);                          // 1小節カウント（弱起の曲はその分も）
   tabs.t0 = actx.currentTime + 0.3 + cin*tabs.bs; tabs.next = 0; tabs.click = -cin;
@@ -867,7 +874,7 @@ async function startTab(){
   tickTab(); kick(); updateFs();
 }
 function stopTab(){
-  tabs.prep++;
+  tabs.prep++; tabs.preparing = false;
   const was = tabs.running;
   tabs.running = false; clearInterval(tabs.timer);
   document.getElementById('btnTab').textContent = '▶ 弾いてみせる';
@@ -987,6 +994,10 @@ function kick(){ dirty = true; if(!raf) raf = requestAnimationFrame(loop); }
 //  ・右手の動きは少しだけ「ならす」（急に止まったり跳んだりしない）
 //  ・重い端末では、動いている間だけ自動で解像度を下げる
 let rSmooth = null, lastFrame = 0, frameAvg = 16, quality = 1, wasMoving = false, slowCount = 0, lowPower = false;
+// 解像度を変えると描く場所を作り直すので、それ自体が重い（カクッとなる）。
+// 段階は3つだけにして、変えるのは「しばらく重い／しばらく軽い」が続いた時だけ・前に変えてから1.5秒以上たってから
+const QSTEPS = [1, 0.8, 0.6];
+let qStep = 0, qChanged = 0, slowRun = 0, fastRun = 0, restoreTimer = 0;
 function smoothRight(target, now){
   if(!target){ rSmooth = null; return null; }
   if(!rSmooth){ rSmooth = {...target}; return rSmooth; }
@@ -1013,12 +1024,19 @@ function loop(now){
   const moving = handMoving || active || camMoving;
   if(moving && wasMoving){
     frameAvg = frameAvg*0.9 + Math.min(100, now - lastFrame)*0.1;
-    if(frameAvg > 24 && quality > 0.5) { quality = Math.max(0.5, quality - 0.1); frameAvg = 16; }
-    else if(frameAvg > 24 && quality <= 0.5 && ++slowCount > 40 && !lowPower){ lowPower = true; view.setShadows(false); }   // それでも重ければ影を切る
-    else if(frameAvg < 17.5 && quality < 1) quality = Math.min(1, quality + 0.02);
+    slowRun = frameAvg > 24 ? slowRun + 1 : 0;
+    fastRun = frameAvg < 15 ? fastRun + 1 : 0;
+    const canChange = now - qChanged > 1500;
+    if(slowRun > 30 && canChange){
+      if(qStep < QSTEPS.length - 1){ qStep++; qChanged = now; slowRun = 0; frameAvg = 16; }
+      else if(++slowCount > 3 && !lowPower){ lowPower = true; view.setShadows(false); }   // それでも重ければ影を切る
+    } else if(fastRun > 120 && qStep > 0 && canChange){ qStep--; qChanged = now; fastRun = 0; }
+    quality = QSTEPS[qStep];
   }
   lastFrame = now;
-  if(!moving && wasMoving){ quality = 1; dirty = true; }   // 止まったらきれいに描き直す
+  // 止まったら、少し待ってからきれいに描き直す（コードを続けて押す時に、そのたび作り直さないように）
+  if(moving) clearTimeout(restoreTimer);
+  else if(wasMoving && quality < 1) restoreTimer = setTimeout(()=>{ quality = 1; dirty = true; kick(); }, 600);
   if(dirty || moving){
     let pose, right = null;
     if(tabOn){
@@ -1035,7 +1053,7 @@ function loop(now){
     } else pose = currentPose(now);
     if(!tabOn) right = showRight ? rightState(now, pl, phR) : null;
     right = window.__forceRight || smoothRight(right, now);
-    view.render(pose, {...state, right, quality: moving ? quality : 1, animating: handMoving || active});
+    view.render(pose, {...state, right, quality, animating: handMoving || active});
     dirty = false;
   }
   wasMoving = moving;
@@ -1069,7 +1087,16 @@ createView({
   const first = new Set([...SONGS.flatMap(sg=>sg.bars.flat().map(c=>c[0])), ...PROGRESSIONS.flatMap(p=>p.chords)]);
   const rest = [...first, ...Object.keys(CHORDS).filter(c=>!first.has(c))];
   const idle = window.requestIdleCallback || (fn=>setTimeout(()=>fn({timeRemaining:()=>8}), 30));
-  const work = dl => { while(rest.length && dl.timeRemaining() > 4) chordPose(rest.shift()); if(rest.length) idle(work); };
+  // 1つの手の形の計算は0.1〜0.3秒かかり、途中で止められない。演奏中・手やカメラが動いている間にやると
+  // その間だけ画面が止まる（カクつく）ので、止まっている時だけ進める
+  const busy = () => playing() || tabs.running || tabs.preparing || poseFrom || oneShot || wasMoving;
+  // 右手のしなり（3度きざみ）の形も先に作っておく（最初の数回の振りで引っかからないように）
+  rest.unshift(...[-9,-6,-3,0,3,6,9,12].map(f=>()=>view.rightHandPose(view.rigR, {theta:0, lift:0, wrist:0, roll:0, flick:f})));
+  const work = dl => {
+    if(busy()){ setTimeout(()=>idle(work), 800); return; }
+    while(rest.length && dl.timeRemaining() > 4 && !busy()){ const job = rest.shift(); typeof job === 'function' ? job() : chordPose(job); }
+    if(rest.length) idle(work);
+  };
   idle(work);
 }).catch(err=>{
   console.error(err);
