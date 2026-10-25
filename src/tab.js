@@ -250,7 +250,7 @@ function finish(ev, fixed){
       if(!prev) best = {cost: l + 0.15*(P-1), from: -1};
       else prev.forEach((st, si)=>{
         const mv = Math.abs(P - st.P), open = !cb.some(n=>n.f>0);
-        const c = st.cost + l + (open ? 0.3*mv : mv*0.9 + (mv ? 0.6 : 0)) + 0.05*cb.reduce((a,n)=>a+Math.min(...st.cb.map(m=>Math.abs(m.s-n.s))),0);
+        const c = st.cost + l + (open ? 0.7*mv : mv*0.9 + (mv ? 0.6 : 0)) + 0.05*cb.reduce((a,n)=>a+Math.min(...st.cb.map(m=>Math.abs(m.s-n.s))),0);
         if(!best || c < best.cost) best = {cost: c, from: si};
       });
       states.push({cb, P, ...best});
@@ -323,7 +323,8 @@ const SOLO_SHAPES = {
   F: {name:'F', frets:[-1,-1,3,2,1,1], fingers:[0,0,3,2,1,1], barre:{fret:1, finger:1, from:4, to:5}},
   G: {name:'G', frets:[3,2,0,0,0,3], fingers:[3,2,0,0,0,4], barre:null},   // 薬指・小指のG：人差し指が空くので、メロディ（1弦1フレットなど）を足しやすい
 };
-export function applyChordHold(events, chords, pickup = 0){
+// shapes：その曲だけの押さえ方（例：禁じられた遊びのAmは5フレットのセーハ）
+export function applyChordHold(events, chords, pickup = 0, shapes = {}){
   if(!chords || !chords.length) return;
   const tl = []; let t = pickup;
   for(const bar of chords) for(const [c, n] of bar){ tl.push({t, c}); t += n; }
@@ -331,7 +332,7 @@ export function applyChordHold(events, chords, pickup = 0){
   // コードが続くあいだ（1つのコードの区間）で、1音でも形のまま弾けない音があれば、その区間は1音ずつの押さえ方にする
   // （区間の途中で、コードの形と1音ずつの形を行ったり来たりすると、手がばたつくので）
   const fits = events.map(e => {
-    const r = resolveChord(tl[segAt(e.t)].c), ch = r && (SOLO_SHAPES[r.name] || getChord(r.name));
+    const r = resolveChord(tl[segAt(e.t)].c), ch = r && ((shapes && shapes[r.name]) || SOLO_SHAPES[r.name] || getChord(r.name));
     return ch ? {r, ch, res: holdFit(e.notes, ch)} : null;
   });
   const bad = new Set(events.map((e, i) => fits[i] && fits[i].res ? -1 : segAt(e.t)));
@@ -356,6 +357,7 @@ function holdFit(notes, ch){
     if(barre && k === 1 && f === barre.fret && s >= barre.from && s <= barre.to){ units[0].notes.push({s, f, k}); continue; }
     units.push({notes: [{s, f, k}]});
   }
+  if(!units.length) return null;                                      // 押さえる指のない形（開放弦だけ）は、1音ずつの押さえ方で
   const played = new Map(notes.map(n => [n.s, n]));
   // 弾く音とぶつかる単位（同じ弦で別のフレット。セーハは、それより低いフレットや開放弦を弾く時）は、はなすしかない
   const must = units.map(u => u.barre ? u.notes.some(m => played.has(m.s) && played.get(m.s).f < barre.fret)
@@ -376,6 +378,8 @@ function holdFit(notes, ch){
     if(best && best.drop < drop.length) break;
   }
   if(!best) return null;
+  // コードの指を全部はなさないと弾けない音は、「コードを押さえたまま」とは言えない（その区間は1音ずつの押さえ方にする）
+  if(units.length && !best.hold.length && !best.notes.some(n => n.f > 0 && units.some(u => u.notes.some(m => m.s === n.s && m.f === n.f)))) return null;
   return best;
 }
 function tryAssign(notes, keep, barre){
@@ -416,7 +420,7 @@ function tryAssign(notes, keep, barre){
       const fs = all.map(m => m.f);
       if(Math.max(...fs) - Math.min(...fs) > 3) return;               // 4フレットより広くは広げない
       // 足す指は、手の位置から見て「そのフレットの担当の指」に近いほどよい
-      const base = nb.filter(m => !extra.includes(m)).reduce((b, m) => Math.min(b, m.f - m.k + 1), 99);
+      const base = all.filter(m => !extra.includes(m)).reduce((b, m) => Math.min(b, m.f - m.k + 1), 99);
       if(base !== 99 && extra.some(n => n.f - base > 3)) return;      // 押さえている形の手の位置から、4フレットより先には届かない
       const cost = span + extra.reduce((c, n) => c + 0.5*Math.abs(n.k - Math.min(4, Math.max(1, n.f - (base === 99 ? n.f : base) + 1))), 0);
       if(!best || cost < best.cost) best = {cost, ks: extra.map(n => n.k)};

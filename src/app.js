@@ -710,7 +710,7 @@ const tabs = {list:[], idx:0, running:false, timer:null, t0:0, bs:0.6, next:0, h
 const TAB = () => tabs.list[tabs.idx];
 function loadTabSongs(){
   // 伴奏のコードがある曲は、コードの形を押さえたまま弾く
-  tabs.list = TAB_SONGS.map(sg=>{ const r = parseCompact(sg.tab); applyChordHold(r.events, sg.chords, sg.pickup); return {...sg, ...r}; });
+  tabs.list = TAB_SONGS.map(sg=>{ const r = parseCompact(sg.tab); applyChordHold(r.events, sg.chords, sg.pickup, sg.shapes); return {...sg, ...r}; });
   try{ for(const sg of JSON.parse(localStorage.getItem('guitarTabImports') || '[]')) tabs.list.push(sg); }catch(e){}
 }
 const saveImports = () => { try{ localStorage.setItem('guitarTabImports', JSON.stringify(tabs.list.filter(t=>t.imported), (k,v)=>k === 'plan' ? undefined : v)); }catch(e){} };
