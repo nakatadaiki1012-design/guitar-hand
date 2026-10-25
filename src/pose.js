@@ -2,7 +2,7 @@
    コード → 手の形（逆運動学）
    骨の長さ・指の付け根の位置は、手の3Dモデルの実寸をそのまま使う
    ========================================================= */
-import { fretX, halfW, strY, FRET_TOP, NECK_BACK_Z, stringZ, NSTR,
+import { GTYPE, fretX, halfW, strY, FRET_TOP, NECK_BACK_Z, stringZ, NSTR,
          add, sub, mul, dot, cross, vlen, norm, lerp, lerp3, DEG } from './geom.js';
 import { jointName, THUMB_JOINTS } from './handrig.js';
 import { makeThumbModel, solveThumb, neckSD } from './thumb.js';
@@ -334,6 +334,11 @@ function localSearch(chord, rig, prm, pressing, scales, opts={}){
   return best;
 }
 function optimizeHand(chord, rig, opts={}){
+  const t0 = performance.now(), r = optimizeHand0(chord, rig, opts);
+  if(typeof window !== 'undefined'){ window.__poseMs = (window.__poseMs||0) + performance.now() - t0; window.__poseN = (window.__poseN||0) + 1; }   // 検証用：手の形の計算にかかった時間
+  return r;
+}
+function optimizeHand0(chord, rig, opts={}){
   const fullBarre = !!chord.barre && (chord.barre.to-chord.barre.from+1) >= 3;
   const base = {pitch:0, yaw:0, roll:0, yK: fullBarre ? HAND_CFG.yKb : HAND_CFG.yK, zK: fullBarre ? HAND_CFG.zKb : HAND_CFG.zK, dx1:0, dx2:0, dx3:0, dx4:0};
   const pressing = new Set(chord.fingers.filter(Boolean));
@@ -355,9 +360,41 @@ function optimizeHand(chord, rig, opts={}){
   return localSearch(chord, rig, best.prm, pressing, [0.5, 0.25, 0.125], opts);
 }
 
+/* ---------- 計算ずみの手の形（表） ----------
+   手の形の計算（optimizeHand）は1つ0.3〜1秒かかり、その間は画面が止まる。
+   よく使う形（全コード×ギター3種類、サンプル曲のソロで使う構え）は、手の向き・位置の数値（prm）だけを
+   あらかじめ計算して pose-table.js に入れておき、ここから1回組み立てるだけにする（数ミリ秒）。
+   表にない形（カポを付けた時・取り込んだ曲など）は、これまでどおりその場で計算する。
+   pose.js の手の形の決め方を変えた時は、表を作り直す（tools/make-pose-table.mjs） */
+const PRM_KEYS = ['pitch','yaw','roll','yK','zK','dx1','dx2','dx3','dx4'];
+let PRM_TABLE = null;
+export function setPoseTable(t){ PRM_TABLE = t; }
+function fromTable(key, chord, rig, opts){
+  const T = PRM_TABLE && PRM_TABLE[GTYPE]; if(!T) return null;
+  let a = T[key];
+  // カポを付けた形は、カポなしの形の数値を使う（押さえる場所がずれるだけで、手の向きはほぼ同じ）
+  if(!a && key.includes('@capo')) a = T[key.split('@capo')[0]];
+  // メロディの構え：同じ形（指を開く／斜め・よく弾く弦）で、いちばん近いポジションのものを使う
+  if(!a && key.startsWith('anchor@')){
+    const m = key.match(/^anchor@(\d+):(.*)$/);
+    let best = null, bd = 99;
+    if(m) for(const k in T){ const n = k.match(/^anchor@(\d+):(.*)$/); if(n && n[2] === m[2] && Math.abs(+n[1] - +m[1]) < bd){ bd = Math.abs(+n[1] - +m[1]); best = T[k]; } }
+    a = best;
+  }
+  if(!a) return null;
+  const prm = Object.fromEntries(PRM_KEYS.map((k,i)=>[k, a[i]]));
+  const hb = buildHand(chord, rig, prm, undefined, opts); hb.prm = prm;
+  return hb;
+}
+// 表を作る時に使う：いま覚えている手の形の数値を書き出す
+export function dumpPoseTable(){
+  const out = {};
+  for(const [k, hb] of poseCache) if(hb && hb.prm && !k.includes('|') && !k.startsWith('tab:') && !k.includes('@capo')) out[k] = PRM_KEYS.map(n=>Math.round(hb.prm[n]*1000)/1000);
+  return {[GTYPE]: out};
+}
 export function computePose(chord, rig){
   let hb = poseCache.get(chord.name);
-  if(!hb){ hb = optimizeHand(chord, rig); poseCache.set(chord.name, hb); }
+  if(!hb){ hb = fromTable(chord.name, chord, rig) || optimizeHand(chord, rig); poseCache.set(chord.name, hb); }
   return poseFromHand(hb, chord, rig);
 }
 
@@ -379,7 +416,7 @@ function positionAnchor(P, rig, grip='spread', home=3){
     const n = grip === 'spread' ? 4 : 3;
     for(let f=1; f<=n; f++) pressT[f] = [home, P + f - 1];
     const ch = {name:key, frets:[-2,-2,-2,-2,-2,-2], fingers:[0,0,0,0,0,0], barre:null, melody:true};
-    poseCache.set(key, optimizeHand(ch, rig, {style, pressT}));
+    poseCache.set(key, fromTable(key, ch, rig, {style, pressT}) || optimizeHand(ch, rig, {style, pressT}));
   }
   return poseCache.get(key);
 }

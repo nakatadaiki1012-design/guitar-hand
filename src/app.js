@@ -4,7 +4,9 @@
 import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, resolveChord, PROGRESSIONS, CHORDS, SONGS, TAB_SONGS } from './data.js';
 import { parseChordSheet, cleanTitle, bookmarkletCode } from './chordsheet.js';
 import { TIERS, DETECTED, QUALITY_LEVEL, setQualityLevel } from './quality.js';
-import { computePose, computeTabPose, blendPose, blendTab, HAND_CFG, clearPoseCache } from './pose.js';
+import { computePose, setPoseTable, dumpPoseTable, computeTabPose, blendPose, blendTab, HAND_CFG, clearPoseCache } from './pose.js';
+import { POSE_TABLE } from './pose-table.js';
+setPoseTable(POSE_TABLE);   // 計算ずみの手の形（押した時にすぐ出るように）
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
 import { BACKDROPS } from './backdrop.js';
@@ -206,7 +208,7 @@ function currentPose(now){
   return blendPose(poseFrom, poseTo, t);
 }
 window.setChord = setChord; window.__strumState = strumState;
-window.__dbg = {get tabRight(){ return tabRight; }, prep: (sg, i) => tabEventPose(sg, i), TAB: () => TAB(), get tabs(){ return tabs; }, kick: () => kick(), state, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R};   // 検証用（動きの数値を外から見る）
+window.__dbg = {get tabRight(){ return tabRight; }, chordPose: n => chordPose(n), dumpPoseTable, setPoseTable, clearCache: () => clearPoseCache(), chordNames: () => Object.keys(CHORDS), tabSongs: () => tabs.list, prep: (sg, i) => tabEventPose(sg, i), TAB: () => TAB(), get tabs(){ return tabs; }, kick: () => kick(), state, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R};   // 検証用（動きの数値を外から見る）
 // コードのボタンを押した時：手がすばやく次の形になり、押さえ終わると同時にジャラーンと鳴る
 function pickChord(name){
   if(prog.running || song.running || tabs.running){ return; }              // 練習・曲デモの演奏中はコードを変えない
@@ -1219,6 +1221,7 @@ createView({
   const busy = () => playing() || tabs.running || tabs.preparing || poseFrom || oneShot || wasMoving;
   // 右手のしなり（3度きざみ）の形も先に作っておく（最初の数回の振りで引っかからないように）
   rest.unshift(...[-9,-6,-3,0,3,6,9,12].map(f=>()=>view.rightHandPose(view.rigR, {theta:0, lift:0, wrist:0, roll:0, flick:f})));
+  rest.push(...view.prebuildBackdrops());                         // ほかの背景も（選んだ時に待たないように）
   const work = dl => {
     if(busy()){ setTimeout(()=>idle(work), 800); return; }
     while(rest.length && dl.timeRemaining() > 4 && !busy()){ const job = rest.shift(); typeof job === 'function' ? job() : chordPose(job); }

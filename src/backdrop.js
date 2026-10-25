@@ -291,5 +291,10 @@ export function createBackdrop(scene, lights, renderers){
       m.userData.envBase ??= m.envMapIntensity; m.envMapIntensity = m.userData.envBase * e.envI; }); });
     renderers.forEach(r=>r.toneMappingExposure = e.exposure);
   }
-  return { set };
+  // ひまな時に、まだ作っていない背景を先に作っておく（切り替えた時に待たないように）
+  function prebuild(name){
+    const B = BACKDROPS[name]; if(!B || built[name]) return;
+    built[name] = B.build(); built[name].visible = false; scene.add(built[name]);
+  }
+  return { set, prebuild, names: Object.keys(BACKDROPS) };
 }

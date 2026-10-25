@@ -352,6 +352,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
     render, setView, rig, rigR, rightHandPose, fingerPose, get info(){ return renderer.info; },
     setView2,
     setBackdrop: name => { backdrop.set(name); touch(); },
+    prebuildBackdrops: () => backdrop.names.map(n => () => backdrop.prebuild(n)),
     setFinish: name => { gtr.setFinish(finishName = name); touch(); },
     setGuitar,
     setCapo(n){ capoNow = n; gtr && gtr.setCapo(n); touch(); },
