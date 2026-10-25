@@ -48,6 +48,7 @@
   #chordName,#chordReading,#difficulty{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #chordName{flex:0 1 auto;max-width:45%}
   #difficulty{min-height:1.4em}
+  .tabhint{font-size:12px;margin:2px 2px 6px}
   #chordName{font-size:34px;font-weight:800;line-height:1}
   #chordReading{color:var(--sub);font-size:13px}
   #difficulty .tabhead{color:#0e9f9a;font-size:12px;font-weight:700;margin-right:8px}
@@ -420,13 +421,15 @@
         <div id="tabList"></div>
         <div class="song-info" id="tabInfo"></div>
         <div class="tabsheet" id="tabSheet"></div>
+        <div class="muted tabhint">タブ譜の音を押すと、そこから弾けます（演奏中に押すと、その場所へ飛びます）</div>
         <div class="runbar">
           <button class="play big" id="btnTab">▶ 弾いてみせる</button>
+          <button class="chip" id="btnTabTop" hidden title="弾き始める所を曲の最初に戻す">⏮ 最初へ</button>
           <button class="chip speedBtn" title="押すたびに ×1 → ×¾ → ×½ → ×¼（スロー再生）">速さ ×1</button>
           <span class="tempo">テンポ <input type="range" id="tabBpm" min="40" max="160" value="90"> <span id="tabBpmVal">90</span></span>
           <button class="chip" id="btnTabDel" hidden title="取り込んだこの曲を消す">🗑 消す</button>
         </div>
-        <p class="cap">数字＝押さえるフレット（0＝開放弦）、丸の色＝押さえる指。左手はその弦・フレットを押さえ、右手はピックでその弦だけを弾きます（表拍はダウン、裏拍はアップ）。開放弦は緑に光ります。止まっている時は数字を押すと、その音の押さえ方が見られます。</p>
+        <p class="cap">数字＝押さえるフレット（0＝開放弦）、丸の色＝押さえる指。左手はその弦・フレットを押さえ、右手は指弾き（親指＝ベース、人差し指・中指・薬指＝3・2・1弦）で弾きます（設定でピックにも切り替えられます）。開放弦は緑に光ります。止まっている時に数字を押すと、その音の押さえ方が見られて、そこから弾き始められます。</p>
         <details class="import">
           <summary>📥 タブ譜・楽譜を取り込む</summary>
           <div class="imp-row">
