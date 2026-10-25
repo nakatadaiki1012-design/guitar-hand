@@ -345,6 +345,23 @@ export function applyChordHold(events, chords, pickup = 0, shapes = {}){
     const sp = ch.frets.map((f, s) => ({f, k: ch.fingers[s]})).filter(n => n.f > 0 && n.k);
     e.P = Math.max(1, Math.min(...[...sp, ...pr].map(n => n.f - n.k + 1)));
   });
+  markSweep(events);
+}
+/* 同時に弾く音（ベース＋メロディなど）の間にはさまる弦：ピックで弾くとその弦も通るので、一緒に鳴る（e.sweep）
+   押さえている弦はそのフレット、押さえていない弦は開放の音。コードを押さえたままなら、たいていコードの音になる */
+export function markSweep(events){
+  for(const e of events){
+    delete e.sweep;
+    if(e.notes.length < 2) continue;
+    const lo = Math.min(...e.notes.map(n=>n.s)), hi = Math.max(...e.notes.map(n=>n.s)), sweep = [];
+    for(let s2=lo+1; s2<hi; s2++){
+      if(e.notes.some(n=>n.s===s2)) continue;
+      const h = (e.hold || []).find(n=>n.s===s2);
+      const f = h ? h.f : (e.barre && s2 >= e.barre.from && s2 <= e.barre.to ? e.barre.fret : 0);
+      sweep.push({s: s2, f, m: STRING_MIDI[s2] + f});
+    }
+    if(sweep.length) e.sweep = sweep;
+  }
 }
 // コードの形（ch）を押さえたまま notes を弾けるか。弾ける時は {notes, hold, barre}（hold：押さえているだけで弾かない音）
 function holdFit(notes, ch){

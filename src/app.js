@@ -9,8 +9,8 @@ window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
 import { BACKDROPS } from './backdrop.js';
 import { FINISHES } from './guitar.js';
-import { GUITARS, NSTR, strY, STRUM_X } from './geom.js';
-import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventChord, eventPressed, noteName, fingerPlan, applyChordHold } from './tab.js';
+import { GUITARS, NSTR, strY, STRUM_X, stringZ, STRING_R } from './geom.js';
+import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventChord, eventPressed, noteName, fingerPlan, applyChordHold, markSweep } from './tab.js';
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
@@ -204,6 +204,7 @@ function currentPose(now){
   return blendPose(poseFrom, poseTo, t);
 }
 window.setChord = setChord; window.__strumState = strumState;
+window.__dbg = {get tabRight(){ return tabRight; }, TAB: () => TAB(), get tabs(){ return tabs; }, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R};   // 検証用（動きの数値を外から見る）
 // コードのボタンを押した時：手がすばやく次の形になり、押さえ終わると同時にジャラーンと鳴る
 function pickChord(name){
   if(prog.running || song.running || tabs.running){ return; }              // 練習・曲デモの演奏中はコードを変えない
@@ -710,8 +711,8 @@ const tabs = {list:[], idx:0, running:false, timer:null, t0:0, bs:0.6, next:0, h
 const TAB = () => tabs.list[tabs.idx];
 function loadTabSongs(){
   // 伴奏のコードがある曲は、コードの形を押さえたまま弾く
-  tabs.list = TAB_SONGS.map(sg=>{ const r = parseCompact(sg.tab); applyChordHold(r.events, sg.chords, sg.pickup, sg.shapes); return {...sg, ...r}; });
-  try{ for(const sg of JSON.parse(localStorage.getItem('guitarTabImports') || '[]')) tabs.list.push(sg); }catch(e){}
+  tabs.list = TAB_SONGS.map(sg=>{ const r = parseCompact(sg.tab); applyChordHold(r.events, sg.chords, sg.pickup, sg.shapes); markSweep(r.events); return {...sg, ...r}; });
+  try{ for(const sg of JSON.parse(localStorage.getItem('guitarTabImports') || '[]')){ markSweep(sg.events); tabs.list.push(sg); } }catch(e){}
 }
 const saveImports = () => { try{ localStorage.setItem('guitarTabImports', JSON.stringify(tabs.list.filter(t=>t.imported), (k,v)=>k === 'plan' ? undefined : v)); }catch(e){} };
 loadTabSongs();
@@ -826,7 +827,7 @@ function tabRight(sg, b){
   if(!nx) return {theta: st.to, lift: Math.min(6, (b - e.t)*6), wrist: 0, roll: 0, flick: 0};
   const t1 = e.t + c/2, t2 = ev[i+1].t - c/2, u = Math.max(0, Math.min(1, (b - t1)/Math.max(1e-3, t2 - t1))), sm = u*u*(3-2*u);
   const far = Math.abs(nx.from - st.to) * tabK;                            // 弦を何mm移動するか
-  return {theta: st.to + (nx.from - st.to)*sm, lift: Math.min(5, 0.8 + far*0.12)*Math.sin(Math.PI*u), wrist: 0, roll: 0, flick: 0};
+  return {theta: st.to + (nx.from - st.to)*sm, lift: Math.min(8, 3 + far*0.15)*Math.sin(Math.PI*u), wrist: 0, roll: 0, flick: 0};
 }
 // 左手：次に押さえる音の少し前から動き始める
 function tabPose(sg, b){
@@ -854,6 +855,8 @@ function tickTab(){
     const e = sg.events[tabs.next++], when = tabs.t0 + e.t*tabs.bs;
     const ss = e.notes.slice().sort((a,b)=>a.s-b.s);
     ss.forEach((n,k)=>playString(n.s, n.f, when + k*0.012, ss.length > 1 ? 0.34 : 0.46));
+    // ベースとメロディを同時に弾く時は、ピックがその間の弦も通る。間の弦がコードの音なら、少し小さく一緒に鳴らす
+    if(e.sweep) for(const w of e.sweep) playString(w.s, w.f, when + (w.s - ss[0].s)*0.012, 0.2);
   }
   while(tabs.click < 0 && tabs.t0 + tabs.click*tabs.bs < ahead){ click(tabs.t0 + tabs.click*tabs.bs, tabs.click === -sg.beats); tabs.click++; }
   if(tabs.next >= sg.events.length){
@@ -911,6 +914,7 @@ function addImported(res, title){
   const sg = {title, short: title.length > 14 ? title.slice(0,13) + '…' : title, credit:'取り込んだ曲', bpm: Math.min(160, Math.max(40, res.bpm || 90)), beats:4, pickup:0,
               events: res.events, length: res.length, info: res.info || '', imported: true};
   if(!sg.events.length) throw new Error('弾ける音が見つかりませんでした');
+  markSweep(sg.events);
   tabs.list.push(sg); saveImports();
   selectTab(tabs.list.length - 1);
   tabMsg.className = 'msg ok';
