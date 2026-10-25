@@ -251,6 +251,7 @@
   .tabsheet svg{display:block;width:auto;max-width:none}
   .tabsheet .tl{stroke:#9aa7ab;stroke-width:1}
   .tabsheet .tb{stroke:#55666e;stroke-width:1.4}
+  .tabsheet .tc{font-size:11px;font-weight:800;fill:#0e9f9a}
   .tabsheet .tn{font-size:10px;fill:#8a989e;text-anchor:middle;font-weight:700}
   .tabsheet .tf{font-size:10px;font-weight:800;fill:#1d2a30;text-anchor:middle;pointer-events:none}
   .tabsheet .ev{cursor:pointer}
@@ -415,6 +416,7 @@
           <button class="play big" id="btnTab">▶ 弾いてみせる</button>
           <button class="chip speedBtn" title="押すたびに ×1 → ×¾ → ×½ → ×¼（スロー再生）">速さ ×1</button>
           <span class="tempo">テンポ <input type="range" id="tabBpm" min="40" max="160" value="90"> <span id="tabBpmVal">90</span></span>
+          <button class="chip on" id="btnAcc" title="うしろで鳴るコードの伴奏（♫の曲）">伴奏</button>
           <button class="chip" id="btnTabDel" hidden title="取り込んだこの曲を消す">🗑 消す</button>
         </div>
         <p class="cap">数字＝押さえるフレット（0＝開放弦）、丸の色＝押さえる指。左手はその弦・フレットを押さえ、右手はピックでその弦だけを弾きます（表拍はダウン、裏拍はアップ）。開放弦は緑に光ります。止まっている時は数字を押すと、その音の押さえ方が見られます。</p>

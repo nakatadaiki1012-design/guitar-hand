@@ -705,7 +705,7 @@ renderSong();
 /* ---------- タブ譜（メロディ弾き） ----------
    1音ずつ：左手はその音の弦・フレットを決まった指で押さえ、右手はピックでその弦だけを弾く（ダウン・アップを交互に）
    開放弦の音では、左手はその前の位置のまま（指は弦から離す） */
-const tabs = {list:[], idx:0, running:false, timer:null, t0:0, bs:0.6, next:0, hl:-1, prep:0, shown:-1};
+const tabs = {list:[], idx:0, running:false, timer:null, t0:0, bs:0.6, next:0, hl:-1, prep:0, shown:-1, acc:0, accOn:true};
 const TAB = () => tabs.list[tabs.idx];
 function loadTabSongs(){
   tabs.list = TAB_SONGS.map(sg=>({...sg, ...parseCompact(sg.tab)}));
@@ -714,10 +714,12 @@ function loadTabSongs(){
 const saveImports = () => { try{ localStorage.setItem('guitarTabImports', JSON.stringify(tabs.list.filter(t=>t.imported), (k,v)=>k === 'plan' ? undefined : v)); }catch(e){} };
 loadTabSongs();
 const tabList = document.getElementById('tabList'), tabSheet = document.getElementById('tabSheet'), tabBpm = document.getElementById('tabBpm');
+document.getElementById('btnAcc').onclick = e => { tabs.accOn = !tabs.accOn; e.currentTarget.classList.toggle('on', tabs.accOn); };
 function renderTabList(){
   tabList.innerHTML = '';
   tabs.list.forEach((sg,i)=>{
-    const b = document.createElement('button'); b.className = 'chip' + (sg.imported ? ' imp' : ''); b.textContent = (sg.imported ? '📥 ' : '') + (sg.short || sg.title);
+    const b = document.createElement('button'); b.className = 'chip' + (sg.imported ? ' imp' : ''); b.textContent = (sg.imported ? '📥 ' : '') + (sg.short || sg.title) + (sg.chords ? ' ♫' : '');
+    if(sg.chords) b.title = '伴奏つき';
     b.classList.toggle('on', i === tabs.idx);
     b.onclick = ()=>selectTab(i);
     tabList.appendChild(b);
@@ -739,8 +741,16 @@ function renderTabSheet(){
   let gap = 1; sg.events.forEach((e,i)=>{ if(i) gap = Math.min(gap, Math.max(0.2, e.t - sg.events[i-1].t)); });
   BW = Math.min(72, Math.max(34, 18/gap));
   const total = off + sg.length, W = 34 + (Math.ceil((total + 0.01) / sg.beats) * sg.beats) * BW + 10;
-  const ly = r => 14 + r*13, H = ly(5) + 16;
+  const top = sg.chords ? 14 : 0, ly = r => 14 + top + r*13, H = ly(5) + 16;
   let svg = '';
+  // 伴奏のコード名（小節の上）
+  if(sg.chords){
+    let t = sg.pickup || 0, prev = '';
+    for(const bar of sg.chords) for(const [c, n] of bar){
+      if(c !== prev) svg += `<text x="${34 + (t + off)*BW - 4}" y="12" class="tc">${c}</text>`;
+      prev = c; t += n;
+    }
+  }
   for(let r=0;r<6;r++) svg += `<line x1="26" x2="${W-6}" y1="${ly(r)}" y2="${ly(r)}" class="tl"/><text x="12" y="${ly(r)+4}" class="tn">${STRING_NAMES[5-r]}</text>`;
   for(let b = 0; b <= total + 0.01; b += sg.beats){ const x = 34 + (b) * BW - 6; svg += `<line x1="${x}" x2="${x}" y1="${ly(0)}" y2="${ly(5)}" class="tb"/>`; }
   sg.events.forEach((e,i)=>{
@@ -757,6 +767,7 @@ function renderTabSheet(){
   document.getElementById('tabInfo').innerHTML = `<b>${sg.title}</b><span>${sg.credit || ''}</span>` +
     `<span>${sg.beats}拍子・${sg.events.length}音${sg.note ? '・' + sg.note : ''}</span>` + (sg.info ? `<span class="muted">${sg.info}</span>` : '');
   document.getElementById('btnTabDel').hidden = !sg.imported;
+  document.getElementById('btnAcc').hidden = !sg.chords;
   tabs.hl = -1;
 }
 function highlightTab(i){
@@ -833,9 +844,29 @@ function tabPose(sg, b){
   return pose;
 }
 const beatSec = bpm => 60/(bpm*state.speed);
+/* 伴奏：うしろでもう1本のギターがコードを鳴らす（メロディより小さく）。
+   1拍目はベース（コードのいちばん低い音）、ほかの拍は高い方の3〜4本を軽くジャラン */
+function accBeats(sg){
+  if(sg._acc) return sg._acc;
+  const out = [];
+  for(const bar of sg.chords) for(const [c, n] of bar) for(let k=0;k<n;k++) out.push({c, first: k === 0});
+  return (sg._acc = out);
+}
+function playAcc(name, beatInBar, when){
+  const ch = getChord(name); if(!ch) return;
+  const on = ch.frets.map((f,s)=>[f,s]).filter(([f])=>f >= 0);
+  if(beatInBar === 0){ const [f,s] = on[0]; playString(s, f, when, 0.2); }
+  else on.slice(-4).forEach(([f,s],k)=>playString(s, f, when + k*0.011, 0.075));
+}
 function tickTab(){
   if(!tabs.running || tabs.running === 'ending') return;
   const sg = TAB(), ahead = actx.currentTime + 0.12;
+  if(sg.chords && tabs.accOn){
+    const acc = accBeats(sg), p0 = sg.pickup || 0;
+    while(tabs.acc < acc.length && tabs.t0 + (p0 + tabs.acc)*tabs.bs < ahead){
+      const k = tabs.acc++; playAcc(acc[k].c, k % sg.beats, tabs.t0 + (p0 + k)*tabs.bs);
+    }
+  }
   while(tabs.next < sg.events.length && tabs.t0 + sg.events[tabs.next].t*tabs.bs < ahead){
     const e = sg.events[tabs.next++], when = tabs.t0 + e.t*tabs.bs;
     const ss = e.notes.slice().sort((a,b)=>a.s-b.s);
@@ -867,7 +898,7 @@ async function startTab(){
   } finally { if(run === tabs.prep) tabs.preparing = false; }
   tabs.bs = beatSec(+tabBpm.value);
   const cin = sg.beats + (sg.pickup || 0);                          // 1小節カウント（弱起の曲はその分も）
-  tabs.t0 = actx.currentTime + 0.3 + cin*tabs.bs; tabs.next = 0; tabs.click = -cin;
+  tabs.t0 = actx.currentTime + 0.3 + cin*tabs.bs; tabs.next = 0; tabs.click = -cin; tabs.acc = 0;
   tabs.running = true; tabs.shown = -1;
   btn.textContent = '■ ストップ';
   tabs.timer = setInterval(tickTab, 25);
