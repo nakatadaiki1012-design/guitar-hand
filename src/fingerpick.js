@@ -15,16 +15,18 @@ const CFG = {
   // 実際の構え（クラシックギター）：前腕はボディの上の縁（6弦側）を越えて来て、手首は弦の6弦側の上、表板から浮かせる。
   // 手は下（1弦側）へ垂れ、指は弦の上から下りて、手のひら側（6弦側・上）へ曲げて弾く。親指は指よりネック側に出て、ベース弦を下へ押して弾く
   // 前腕の向きを先に決め、手首で手のひら側へ曲げて手の向きを作る（前腕がギターの正面から突き出さないように）
-  elbow: [0.60, -0.75, -0.10],   // 手首→ひじ：前腕はボディのおしり側・6弦側の縁の上を、表板に沿って寝かせて来る
+  elbow: [0.60, -0.75, -0.12],   // 手首→ひじ：前腕はボディのおしり側・6弦側の縁へ。縁の所で腕の中心が表板から約45mm（腕が縁に軽く乗る）
   palmHint: [0.0, 0.3, -1.0],    // 手のひらはだいたい表板の方
-  wristFlex: 15,                 // 手首を手のひら側へ曲げる角度（軽く）
-  wristRoll: -20,                // 前腕のひねり（度）：親指側を少し起こす
-  fan: {1: -11, 2: 0, 3: 18},    // 指先の前後の位置（mm）：つけ根の並びと同じく、人差し指はネック寄り・薬指はブリッジ寄り（逆にすると指が交差する）
-  thumbX: -26,                   // 親指の先は、中指より 26mm ネック寄り（人差し指の前に出る）
+  wristFlex: 10,                 // 手首を手のひら側へ曲げる角度（軽く）
+  wristRoll: 15,                 // 前腕のひねり（度）
+  wristYaw: 10,                  // 手首の横の曲げ（度）：＋で小指側へ（人差し指が横へ曲がりすぎないように）
+  fan: {1: -24, 2: 0, 3: 16},    // 指先の前後の位置（mm）：つけ根の並びと同じく、人差し指はネック寄り・薬指はブリッジ寄り（逆にすると指が交差する）
+  thumbX: -36,                   // 親指の先は、中指より 36mm ネック寄り（人差し指の前に出る）
   pad: 8,                        // 指先の関節から、弦に当たる指の腹の点まで（mm）
+  pinky: [20, -26, 7],           // 小指の先：薬指の先から、ブリッジ側へ20mm・6弦側へ26mm・7mm浮かせた所（薬指の横で、横に曲げずに軽く丸める）
   away: 5,                       // 弾き終わって戻る時は、弦から5mm浮かせて戻る（鳴っている弦に触れて音を止めない）。次に弾く直前に弦へ下りる
   thumbShift: 8,                 // 親指が弦を1本移るごとに、手ごと動く量（mm）
-  knuckleBack: 25, knuckleUp: 75,// 中指のつけ根は、中指の指先の「構えの位置」から、手首側へ24mm・表板から離れる方へ68mm（指は付け根40°・第二関節50°ほどの自然な曲げ）
+  knuckleBack: 20, knuckleUp: 60,// 中指のつけ根は、中指の指先の「構えの位置」から、手首側へ24mm・表板から離れる方へ68mm（指は付け根40°・第二関節50°ほどの自然な曲げ）
   splay: {1: 2, 2: 0, 3: -2, 4: -4},   // 指はほぼそろえて、平行に下ろす
   // 弾く動き：弦に添えた位置（rest）→ 弾き終わりの位置（through）。y：1弦側が＋、z：客席側が＋
   //   指（i・m・a）：弦の1弦側に添え、手のひらの方（6弦側・上）へ弦をはじいて、少し浮く
@@ -67,6 +69,7 @@ export function fingerPose(rig, st){
   const F = norm(add(mul(fa0, Math.cos(fl)), mul(P0, Math.sin(fl))));        // 手首→指のつけ根
   let N = norm(sub(P0, mul(F, dot(P0, F))));
   N = R3(F, CFG.wristRoll*DEG, N);
+  if(CFG.wristYaw){ const Fy = R3(N, CFG.wristYaw*DEG, F); F.splice(0, 3, ...Fy); }   // 手首を親指側／小指側へ少し曲げる
   const U = mul(N, -1), Z = mul(F, -1), Y = U, X = cross(Y, Z);
   const toW = v => add(add(mul(X, v[0]), mul(Y, v[1])), mul(Z, v[2]));
   const toL = v => [dot(X, v), dot(Y, v), dot(Z, v)];
@@ -90,8 +93,12 @@ export function fingerPose(rig, st){
   const radial = norm(toW(sub(rest[jointName(1,1)], rest[jointName(2,1)])));
   const tips = {}, errs = {}, angs = {};
   const KL = norm(toW(sub(rest[jointName(4,1)], rest[jointName(1,1)])));   // つけ根の並びの向き（人差し指→小指）
+  if(typeof window !== 'undefined' && !window.__fpRestAbd){            // 検証用：モデルの基本姿勢での、指の横の向き（つけ根の骨に対して）
+    window.__fpRestAbd = [1,2,3,4].map(f=>{ const v0 = norm(sub(rest[jointName(f,1)], rest[jointName(f,0)])), v1 = norm(sub(rest[jointName(f,2)], rest[jointName(f,1)]));
+      const kl = norm(sub(rest[jointName(4,1)], rest[jointName(1,1)])); return ((Math.asin(dot(v1, kl)) - Math.asin(dot(v0, kl)))/DEG).toFixed(1); });
+  }
   // 小指は弾かない：薬指のすぐ後ろ（1弦より外・少し浮かせた所）に、薬指と同じように曲げてついていく
-  const T4f = () => { const x = X0 + CFG.fan[3] + 20; return [x, strYf(5, x) + 1, stringZ(x) + 26]; };
+  const T4f = () => { const r = tipTarget(3, strings[3]); return [r[0] + CFG.pinky[0], r[1] + CFG.pinky[1], r[2] + CFG.pinky[2]]; };
   for(let f=1; f<=4; f++){
     const M = add(W, toW(rest[jointName(f,0)])), K = add(W, toW(rest[jointName(f,1)]));
     let d0 = norm(toW(sub(rest[jointName(f,4)], rest[jointName(f,1)])));
@@ -102,7 +109,7 @@ export function fingerPose(rig, st){
     const toT = norm(sub(f === 4 ? T4f() : Tf, K));
     let n1 = norm(cross(KL, toT)); if(dot(n1, N) < 0) n1 = mul(n1, -1);
     const pts = solveFinger(L, K, f === 4 ? T4f() : Tf, d0, n1);
-    const axis = norm(cross(d0, n1));
+    const axis = norm(cross(toT, n1));          // 関節の曲がる軸＝曲げる面に直角（指の骨がねじれないように）
     out.push({name: jointName(f,0), pos: M, fwd: norm(sub(K, M)), dorsal: U});
     for(let i=0;i<4;i++){
       const fwd = norm(sub(pts[Math.min(i+1,3)], pts[Math.min(i,2)]));
@@ -112,7 +119,7 @@ export function fingerPose(rig, st){
     if(f < 4) errs[f] = vlen(sub(tips[f], tipTarget(f, strings[f])));
     { const v0 = norm(sub(K, M)), v1 = norm(sub(pts[1], pts[0])), v2 = norm(sub(pts[2], pts[1]));
       const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, dot(a, b))))/DEG;
-      angs[f] = {mcp: ang(v0, v1)*Math.sign(dot(sub(v1, v0), N) || 1), pip: ang(v1, v2)}; }
+      angs[f] = {mcp: ang(v0, v1)*Math.sign(dot(sub(v1, v0), N) || 1), pip: ang(v1, v2), abd: (Math.asin(dot(v1, KL)) - Math.asin(dot(v0, KL)))/DEG, twist: ang(norm(cross(v0, N)), norm(cross(v1, n1)))}; }
   }
   // 親指：ベースの弦の6弦側に添え、弾く時は1弦側へ
   const mv = (R, v) => [dot(R[0],v), dot(R[1],v), dot(R[2],v)];
