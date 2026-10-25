@@ -319,7 +319,10 @@ function assignFingers(notes, P, held = {}){
    ・どうしても形のまま弾けない時だけ、1音ずつの押さえ方にもどす
    chords：[[コード名, 拍数], ...] の小節の並び（data.js の chords をそろえたもの）。pickup：弱起の拍数 */
 // ソロギターでよく使う、軽い押さえ方（Fは1・2弦だけ人差し指でセーハする小さいF）
-const SOLO_SHAPES = { F: {name:'F', frets:[-1,-1,3,2,1,1], fingers:[0,0,3,2,1,1], barre:{fret:1, finger:1, from:4, to:5}} };
+const SOLO_SHAPES = {
+  F: {name:'F', frets:[-1,-1,3,2,1,1], fingers:[0,0,3,2,1,1], barre:{fret:1, finger:1, from:4, to:5}},
+  G: {name:'G', frets:[3,2,0,0,0,3], fingers:[3,2,0,0,0,4], barre:null},   // 薬指・小指のG：人差し指が空くので、メロディ（1弦1フレットなど）を足しやすい
+};
 export function applyChordHold(events, chords, pickup = 0){
   if(!chords || !chords.length) return;
   const tl = []; let t = pickup;
@@ -366,7 +369,10 @@ function holdFit(notes, ch){
   for(const drop of subsets){
     const keep = units.filter((u, i) => !must[i] && !drop.includes(i));
     const r = tryAssign(notes, keep, barre);
-    if(r && (!best || drop.length < best.drop || (drop.length === best.drop && r.cost < best.cost))) best = {...r, drop: drop.length};
+    // ベース（いちばん太い弦の指）は、なるべく離さない
+    const bassS = Math.min(...units.flatMap(u => u.notes.map(m => m.s)));
+    const dropBass = drop.some(i => units[i].notes.some(m => m.s === bassS)) ? 0.8 : 0;
+    if(r && (!best || drop.length < best.drop || (drop.length === best.drop && r.cost + dropBass < best.cost))) best = {...r, cost: r.cost + dropBass, drop: drop.length};
     if(best && best.drop < drop.length) break;
   }
   if(!best) return null;
