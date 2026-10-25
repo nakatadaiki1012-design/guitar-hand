@@ -237,7 +237,7 @@ function finish(ev, fixed){
   };
   const local = (cb, P) => {
     let c = 0.04*P;
-    for(const n of cb){ if(n.f === 0) { c += 0.15; continue; } const k = n.f - P + 1; if(k > 4) c += 1.5*(k-4); }
+    for(const n of cb){ if(n.f === 0) { c += 0.15; continue; } const k = n.f - P + 1; if(k > 4) c += 3.5*(k-4); }   // 指を4フレットより広げるのはつらい（それなら手の位置をずらす）
     return c;
   };
   // 動的計画法
