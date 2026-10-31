@@ -4,14 +4,14 @@
 import { STRING_NAMES, STRING_NUM, STRING_MIDI, FINGER_NAMES, FINGER_COLORS, ROOTS, TYPES, getChord, resolveChord, PROGRESSIONS, CHORDS, SONGS, TAB_SONGS, ROOT_SEMI } from './data.js';
 import { parseChordSheet, cleanTitle, bookmarkletCode } from './chordsheet.js';
 import { TIERS, DETECTED, QUALITY_LEVEL, setQualityLevel } from './quality.js';
-import { computePose, setPoseTable, dumpPoseTable, computeTabPose, blendPose, blendTab, HAND_CFG, clearPoseCache } from './pose.js';
+import { computePose, setPoseTable, dumpPoseTable, computeTabPose, blendPose, blendTab, HAND_CFG, clearPoseCache, poseParts } from './pose.js';
 import { POSE_TABLE } from './pose-table.js';
 setPoseTable(POSE_TABLE);   // 計算ずみの手の形（押した時にすぐ出るように）
 window.__cfg = HAND_CFG;
 import { createView, VIEWS } from './view.js';
 import { BACKDROPS } from './backdrop.js';
 import { FINISHES } from './guitar.js';
-import { GUITARS, NSTR, strY, STRUM_X, stringZ, STRING_R } from './geom.js';
+import { GUITARS, NSTR, strY, STRUM_X, stringZ, STRING_R, fretX, FRET_TOP, SCALE_LEN, halfW } from './geom.js';
 import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventChord, eventPressed, noteName, fingerPlan, applyChordHold, markSweep } from './tab.js';
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 import { fingerPlanRight, fingerStateAt } from './fingerpick.js';
@@ -34,7 +34,7 @@ let TWEEN_MS = 450, tweenDur = 450;
 const capo = () => state.capo || 0;
 function shiftChord(c){
   const k = capo(); if(!k || !c) return c;
-  return {...c, name: c.name + '@capo' + k, frets: c.frets.map(f => f > 0 ? f + k : f),
+  return {...c, name: c.name + '@capo' + k, form: c.form ? c.form + '@capo' + k : c.form, frets: c.frets.map(f => f > 0 ? f + k : f),
           barre: c.barre ? {...c.barre, fret: c.barre.fret + k} : null};
 }
 const chordPose = name => computePose(shiftChord(typeof name === 'string' ? getChord(name) : name), view.rig);
@@ -215,7 +215,7 @@ function currentPose(now){
   return blendPose(poseFrom, poseTo, t);
 }
 window.setChord = setChord; window.__strumState = strumState;
-window.__dbg = {get tabRight(){ return tabRight; }, chordPose: n => chordPose(n), dumpPoseTable, setPoseTable, clearCache: () => clearPoseCache(), chordNames: () => Object.keys(CHORDS), tabSongs: () => tabs.list, prep: (sg, i) => tabEventPose(sg, i), TAB: () => TAB(), get tabs(){ return tabs; }, kick: () => kick(), state, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R};   // 検証用（動きの数値を外から見る）
+window.__dbg = {get tabRight(){ return tabRight; }, chordPose: n => chordPose(n), dumpPoseTable, setPoseTable, clearCache: () => clearPoseCache(), chordNames: () => Object.keys(CHORDS), tabSongs: () => tabs.list, prep: (sg, i) => tabEventPose(sg, i), TAB: () => TAB(), get tabs(){ return tabs; }, kick: () => kick(), state, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R, poseParts, fretX, FRET_TOP: () => FRET_TOP, SCALE_LEN: () => SCALE_LEN, halfW, getChord, CHORDS};   // 検証用（動きの数値を外から見る）
 // コードのボタンを押した時：手がすばやく次の形になり、押さえ終わると同時にジャラーンと鳴る
 function pickChord(name){
   if(prog.running || song.running || tabs.running){ return; }              // 練習・曲デモの演奏中はコードを変えない
@@ -869,6 +869,7 @@ function tabEventPose(sg, i){
   sg.plan ||= fingerPlan(sg.events);
   const pl = sg.plan[i];
   const k = capo(), hover = k ? Object.fromEntries(Object.entries(pl.hover).map(([f,[s,fr,l]])=>[f, [s, fr + k, l]])) : pl.hover;
+  if(e.form) computePose(shiftChord(e.form), view.rig);             // 押さえたままの形の手の形（手の置き方に使う）を先に
   const pose = computeTabPose(shiftChord(eventChord(e)), view.rig, (e.P || 1) + k, hover, pl.grip, pl.home);
   const open = e.notes.filter(n=>!n.f).map(n=>n.s);
   const held = (e.hold || []).map(n=>n.s);                        // コードの形で押さえているだけの弦（光らせない）

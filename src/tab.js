@@ -340,6 +340,9 @@ export function applyChordHold(events, chords, pickup = 0, shapes = {}){
     if(!fits[i] || bad.has(segAt(e.t))) return;
     const {r, ch, res} = fits[i];
     e.notes = res.notes; e.hold = res.hold; e.barre = res.barre; e.chord = r.name;
+    // 押さえたままの形（ソロ用の小さいFなども含めて、実際に押さえている形）。手の置き方はこの形に合わせる
+    const fr = ch.frets.map(f => f > 0 ? f : f === 0 ? 0 : -1);
+    e.form = {name: 'form:' + fr.join(',') + '/' + ch.fingers.join(',') + (ch.barre ? `/b${ch.barre.fret}.${ch.barre.from}.${ch.barre.to}` : ''), frets: fr, fingers: ch.fingers.slice(), barre: ch.barre ? {...ch.barre} : null};
     // 手の位置（ポジション）はコードの形で決める（はなした指・足した指で手が動かないように）
     const pr = [...res.notes, ...res.hold].filter(n => n.f > 0 && n.k);
     const sp = ch.frets.map((f, s) => ({f, k: ch.fingers[s]})).filter(n => n.f > 0 && n.k);
@@ -503,7 +506,7 @@ export function eventChord(e){
   const frets = Array(NS).fill(-2), fingers = Array(NS).fill(0);
   for(const n of [...(e.hold || []), ...e.notes]){ frets[n.s] = n.f; fingers[n.s] = n.k || 0; }
   const name = 'tab:' + e.notes.map(n=>`${n.s}.${n.f}.${n.k}`).join('_') + (e.hold && e.hold.length ? '+' + e.hold.map(n=>`${n.s}.${n.f}.${n.k}`).join('_') : '') + (e.barre ? 'b' + e.barre.fret + '.' + e.barre.from : '');
-  return {name, frets, fingers, barre: e.barre || null, melody: true};
+  return {name, frets, fingers, barre: e.barre || null, melody: true, form: e.form ? e.form.name : null};   // form：押さえたままの形（手の置き方をその形に合わせる）
 }
 export const eventPressed = e => e.notes.some(n=>n.f > 0) || !!(e.hold && e.hold.length);
 

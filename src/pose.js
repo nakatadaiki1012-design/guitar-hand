@@ -2,7 +2,7 @@
    コード → 手の形（逆運動学）
    骨の長さ・指の付け根の位置は、手の3Dモデルの実寸をそのまま使う
    ========================================================= */
-import { GTYPE, fretX, halfW, strY, FRET_TOP, NECK_BACK_Z, stringZ, NSTR,
+import { GTYPE, fretX, halfW, strY, FRET_TOP, NECK_BACK_Z, stringZ, NSTR, STRING_R,
          add, sub, mul, dot, cross, vlen, norm, lerp, lerp3, DEG } from './geom.js';
 import { jointName, THUMB_JOINTS } from './handrig.js';
 import { makeThumbModel, solveThumb, neckSD } from './thumb.js';
@@ -55,14 +55,16 @@ function chain2(L, th, p2, p3){
 /* 待っている指（メロディ）：力を抜いた形（つけ根 約40°・第二関節 約50°）を基本に、
    「弦に触れない高さ」「だいたい自分のフレット・弦の上」を保つように、曲げ角を少しだけ変える。
    決まった点に指先を合わせないので、近すぎる点に合わせて「く」の字に縮こまることがない */
-function relaxedFinger(f, Lbone, K, T, H, lift, others=[]){
+function relaxedFinger(f, Lbone, K, T, H, lift, others=[], Mp=null){
   const R = RAD[f], c = COUPLE[f];
   const L = [Lbone[0], Lbone[1], Lbone[2]+PAD_EXT];
   const d = sub(T,K); let e = sub(d, mul(H.N, dot(d,H.N)));             // つけ根 → 待つ場所 の向き（手のひらの向きと直角な成分）
   e = vlen(e) > 1e-6 ? norm(e) : norm(sub(H.F, mul(H.N, dot(H.F,H.N))));
+  // 指を曲げる面は、甲の骨のまっすぐ先を基準にする（待つ場所の方へは少しだけ寄せる）。待つ場所の向きだけで決めると、横や後ろへ反ってしまう
+  if(Mp){ let e0 = sub(sub(K, Mp), mul(H.N, dot(sub(K, Mp), H.N))); e0 = norm(e0); e = norm(add(mul(e0, 0.75), mul(e, 0.25))); }
   const toW = ([u,v]) => add(K, add(mul(e,u), mul(H.N,v)));
   let best = null;
-  for(let th=-36; th<=24; th+=6) for(let p2=25; p2<=85; p2+=6){
+  for(let th=-36; th<=66; th+=6) for(let p2=25; p2<=85; p2+=6){
     const pts = chain2(L, th*DEG, p2*DEG, c*p2*DEG).map(toW);
     const pad = pts[3];
     let cost = ((th+12)*(th+12) + (p2-55)*(p2-55))/900;                   // 楽な形（少しそらせてから、第二関節で曲げる）からの違い
@@ -74,6 +76,11 @@ function relaxedFinger(f, Lbone, K, T, H, lift, others=[]){
       if(Math.abs(P[1]) < halfW(P[0]) + r*0.5){ const cl = P[2]-r-(stringZ(P[0])+1.0); if(cl<0) cost += cl*cl*2; }
     }
     for(const o of others) cost += fingerHit(f, pts, o.f, o.pts)*2;   // 押さえている指にかぶさらない
+    if(Mp){                                                               // 甲の骨から見て、つけ根は反らさず、少し（15°以上）曲げる
+      const v0 = norm(sub(K, Mp)), v1 = norm(sub(pts[1], pts[0]));
+      const a = Math.acos(Math.max(-1, Math.min(1, dot(v0, v1))))/DEG * (dot(sub(v1, v0), H.N) >= 0 ? 1 : -1);
+      cost += Math.pow(Math.max(0, 15 - a), 2) * 0.02;
+    }
     if(!best || cost < best.cost) best = {cost, pts};
   }
   const out = padToTip(best.pts, Lbone[2]); out.pen = 0;
@@ -82,7 +89,7 @@ function relaxedFinger(f, Lbone, K, T, H, lift, others=[]){
 
 /* 1本の指：第二関節の曲げ角を二分探索で決め、第一関節の連動比率をいくつか試して
    「指先が真上から当たる」「他の弦に触れない」「関節が無理な角度にならない」ものを選ぶ */
-function solveFinger(f, Lbone, K, T, H, kind, others=[], arch=false){
+function solveFinger(f, Lbone, K, T, H, kind, others=[], arch=false, Mp=null){
   const R = RAD[f];
   const L = [Lbone[0], Lbone[1], Lbone[2]+PAD_EXT];
   // 指を曲げる面：ふつうは手のひらの向き(N)を含む面。ほかの指とぶつかる時は、つけ根→指先の線を軸に面を少しひねる
@@ -115,9 +122,14 @@ function solveFinger(f, Lbone, K, T, H, kind, others=[], arch=false){
     }
     const p1 = norm(sub(pts[1],pts[0]));
     const mcp = Math.atan2(dot(p1,H.N), dot(p1,H.F))/DEG;              // 付け根の関節（反らすのは苦手）
+    if(Mp){                                                             // 甲の骨から見ても反らさない（人差し指・小指は骨が斜めなので、手の向きだけでは分からない）
+      const v0 = norm(sub(K, Mp)), a = Math.acos(Math.max(-1, Math.min(1, dot(v0, p1))))/DEG * (dot(sub(p1, v0), H.N) >= 0 ? 1 : -1);
+      if(a < 0) pen += -a*0.6;
+    }
+    if(p2/DEG > 100) pen += (p2/DEG - 100)*0.3;                         // 第二関節の曲げすぎ
     if(mcp < -5) pen += (-5-mcp)*1.2;
     if(mcp > 90) pen += (mcp-90)*0.5;
-    if(c*p2/DEG > 88) pen += (c*p2/DEG-88)*0.3;
+    if(c*p2/DEG > 85) pen += (c*p2/DEG-85)*0.6;                          // 第一関節の曲げすぎ
     pen += Math.abs(c-COUPLE[f])*2;
     for(let s=0;s<3;s++) for(let t=0;t<=1.001;t+=0.25){                 // 他の弦に触れないか
       if(kind!=='hover' && s===2 && t>0.3) continue;
@@ -202,7 +214,7 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
     // 同じフレットに何本か並ぶときは、指の順番どおり斜めに並べる（人差し指がいちばんナット寄り）
     // 離れた弦を押さえる時ほど大きくずらす（太い弦へのびる指が、もう1本の指先の上を横切らないように）
     const strs = list.map(f=>Math.min(...used[f].strings)), span = strs.length > 1 ? Math.max(...strs) - Math.min(...strs) : 0;
-    const hi = fretX(+fr) - 2.5, lo = fretX(+fr-1) + 1.5, gap = Math.min(span >= 3 ? 13 : 8, (hi-lo)/Math.max(1,n-1));
+    const hi = fretX(+fr) - 2.5, lo = fretX(+fr-1) + 1.5, gap = Math.min(n >= 3 ? 9 : (span >= 3 ? 3 : 8), (fretX(+fr) - fretX(+fr-1))*0.4, (hi-lo)/Math.max(1,n-1));   // 3本並ぶ時・フレット間隔の狭い所は小さくずらす（後ろの指が前のフレットのそばまで下がらないように）
     const xs = list.map((f,i)=> fretX(+fr) - 4.5 - (n-1-i)*gap + (prm['dx'+f] || 0));
     for(let i=n-1;i>=0;i--){ xs[i] = Math.min(xs[i], i<n-1 ? xs[i+1]-gap : hi); }
     for(let i=0;i<n;i++){ xs[i] = Math.max(xs[i], i>0 ? xs[i-1]+gap : lo); }
@@ -231,14 +243,16 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
   for(const f of order){
     const L = rig.lengths[f];
     let pts, mode, string = null, T;  // T = 指の腹の目標点
-    if(barre && f===1){
+    if(barre && f===1 && fullBarre){
       mode = 'barre'; string = barre.from; pts = solveBarre(L, K[1], barre, H);
     } else if(used[f]){
       mode = 'press'; string = Math.min(...used[f].strings);
       const x = tipX[f];
       T = [x, strY(string,x)+1.0, FRET_TOP + 0.35 + PAD_R];
+      // 2本だけのセーハ（1・2弦など）：指の腹を2本の弦のまん中に当てて、腹の幅でまとめて押さえる（指は折らずに軽く伸ばす）
+      if(barre && f===1){ let sy = 0, n = 0; for(let s2=barre.from; s2<=barre.to; s2++){ sy += strY(s2, x); n++; } T = [x, sy/n + 0.5, FRET_TOP + 0.2 + PAD_R]; }
       const others = Object.entries(fingers).filter(([,v])=>v.mode==='press').map(([g,v])=>({f:+g, pts:v.pts}));
-      pts = solveFinger(f, L, K[f], T, H, 'press', others, opts.anc != null);
+      pts = solveFinger(f, L, K[f], T, H, 'press', others, opts.anc != null, M[f]);
       addc('pen'+f, pts.pen);
       // 届かない／縮こまりすぎ：指先が目標からずれた分
       const pd = vlen(sub(add(pts[2], mul(norm(sub(pts[3],pts[2])), L[2]+PAD_EXT)), T));
@@ -248,7 +262,7 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
       if(opts.hoverT && opts.hoverT[f]){                     // メロディ：決まった場所（さっき押さえていた所の少し上など）の近くで、力を抜いて待つ
         T = opts.hoverT[f];
         const others = Object.entries(fingers).filter(([,v])=>v.mode!=='hover').map(([g,v])=>({f:+g, pts:v.pts}));
-        pts = relaxedFinger(f, L, K[f], T, H, opts.hoverT[f].lift ?? 3, others);
+        pts = relaxedFinger(f, L, K[f], T, H, opts.hoverT[f].lift ?? 3, others, M[f]);
         const axis = norm(cross(sub(pts[3],pts[0]), H.N));
         fingers[f] = {mode, pts, string, axis};
         continue;
@@ -256,14 +270,37 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
         const x = fretX(opts.hoverP + f - 1) - 5;
         T = [x, strY(opts.hoverS, x) + 2, FRET_TOP + PAD_R + 6];
       } else {
-        const x = K[f][0]+2;
+        // コード：使わない指は、力を抜いて軽く曲げた形で、弦の少し上に浮かせる（決まった点へ向けると、近すぎる時に指が反り返る）
+        // 待つ場所：押さえている指から数えた「自分のフレット」の上（人差し指なら、中指が2フレットなら1フレット）。押さえる指がなければつけ根の前
+        let x = K[f][0]+2;
+        const pg = Object.keys(used).map(Number).filter(g=>!(barre && g===1)).sort((a,b)=>Math.abs(a-f)-Math.abs(b-f))[0];
+        if(pg){ const slot = used[pg].fret + (f - pg); x = slot >= 1 ? fretX(slot) - 8 : fretX(1) * 0.4; }
         T = [x, f===4 ? 20 : 12, FRET_TOP + PAD_R + (f===4 ? 10 : 9)];
+        const others = Object.entries(fingers).filter(([,v])=>v.mode!=='hover').map(([g,v])=>({f:+g, pts:v.pts}));
+        pts = relaxedFinger(f, L, K[f], T, H, f===4 ? 8 : 6, others, M[f]);
+        const axis = norm(cross(sub(pts[3],pts[0]), H.N));
+        fingers[f] = {mode, pts, string, axis};
+        continue;
       }
       pts = solveFinger(f, L, K[f], T, H, 'hover');
       cost += pts.pen*0.3;
     }
     const axis = norm(cross(sub(pts[3],pts[0]), H.N));
     fingers[f] = {mode, pts, string, axis};
+  }
+  // 鳴らす弦に、ほかの指が触れない（触れると音が止まる）：開放弦は全体、押さえた弦はフレットからブリッジ側
+  for(let s2=0; s2<NSTR; s2++){
+    const fr = chord.frets[s2]; if(!(fr >= 0)) continue;
+    const x0 = fr > 0 ? fretX(fr) + 0.5 : 0, x1 = fr > 0 ? fretX(fr + 3) : fretX(5);
+    const a = [x0, strY(s2, x0), fr > 0 ? FRET_TOP + 1.0 + STRING_R[s2] : stringZ(x0)], b = [x1, strY(s2, x1), fr > 0 ? FRET_TOP + 1.0 + STRING_R[s2] + (stringZ(x1) - stringZ(x0))*0.3 : stringZ(x1)];
+    for(let f=1; f<=4; f++){
+      if(fr > 0 && chord.fingers[s2] === f) continue;
+      const P = fingers[f].pts;
+      for(let i=0;i<3;i++){
+        const d = segDist(P[i], P[i+1], a, b), r = RAD[f][Math.min(3, i+1)]*0.9 + STRING_R[s2] + 0.4;
+        if(d < r) addc('mute'+f, (r-d)*(r-d)*3);
+      }
+    }
   }
   // 指どうしがぶつからない（重なると指がくっついて見える）
   for(let f=1; f<=4; f++) for(let g=f+1; g<=4; g++){
@@ -278,7 +315,11 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
     }
   }
   // 音がよく鳴るのはフレットのすぐ近く
-  for(const f in tipX) if(!(barre && +f===1)) cost += (fretX(used[f].fret) - tipX[f]) * 0.06;
+  for(const f in tipX) if(!(barre && +f===1)){
+    const fr = used[f].fret, behind = fretX(fr) - tipX[f], slot = fretX(fr) - fretX(fr-1);
+    cost += behind * 0.06;
+    cost += Math.pow(Math.max(0, behind/slot - 0.45), 2) * 100;  // フレット間隔の半分より後ろは、音がビビるので強く減点
+  }
 
   // 手のひら・手首がネックにめり込まない
   const palmPts = [];
@@ -313,7 +354,8 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
 const PRM_STEP = {pitch:8, yaw:8, roll:8, yK:5, zK:5, dx1:4, dx2:4, dx3:4, dx4:4};
 const PRM_LIM  = {pitch:[-45,45], yaw:[-35,35], roll:[-35,35], yK:[18,64], zK:[-42,8], dx1:[-24,4], dx2:[-24,4], dx3:[-24,4], dx4:[-24,4]};
 const poseCache = new Map();
-export const clearPoseCache = () => poseCache.clear();   // ギターの種類を変えた時は計算し直す
+export const clearPoseCache = () => poseCache.clear();
+export const poseParts = key => { const hb = poseCache.get(key); return hb ? {cost: hb.cost, parts: hb.parts} : null; };   // 検証用：その形のコストの内わけ   // ギターの種類を変えた時は計算し直す
 function localSearch(chord, rig, prm, pressing, scales, opts={}){
   let best = buildHand(chord, rig, prm, undefined, opts), thStart = best.th.ang;
   for(const scale of scales){
@@ -423,16 +465,25 @@ function positionAnchor(P, rig, grip='spread', home=3){
 /* hover：押さえていない指の待つ場所 {指: [弦, フレット, 浮かせる高さmm]}。手（手首・手のひら）は構えのまま動かさない */
 export function computeTabPose(chord, rig, P=1, hover=null, grip='spread', home=3){
   const hk = hover ? Object.entries(hover).map(([f,[s,fr,l]])=>`${f}:${s}.${fr}.${l}`).join(',') : '';
-  const key = chord.name + '@' + P + ':' + grip + ':' + home + '|' + hk;
+  const key = chord.name + '@' + P + ':' + grip + ':' + home + '|' + hk + (chord.form ? '|' + chord.form : '');
   let hb = poseCache.get(key);
   if(!hb){
-    const an = positionAnchor(P, rig, grip, home);
     const ss = chord.frets.map((f,s)=>f>=0 ? s : -1).filter(s=>s>=0);
     const hoverT = {};
     if(hover) for(const f in hover){
       const [s, fr, lift] = hover[f], x = fretX(fr) - 4.5;
       hoverT[f] = [x, strY(s, x) + 1.0, stringZ(x) + 1 + PAD_R + lift]; hoverT[f].lift = lift;
     }
+    // コードを押さえたまま弾く音：手の置き方は、そのコードを押さえた時の手の形と同じにする（ポジションの構えではなく）
+    const form = chord.form && poseCache.get(chord.form);
+    if(form && form.prm){
+      const prm = {...form.prm};
+      hb = buildHand(chord, rig, prm, form.th.ang, {anc: form.anc, hoverP: P, hoverS: ss.length ? ss.reduce((a,b)=>a+b,0)/ss.length : 2.5, hoverT});
+      hb.prm = prm; hb.grip = grip;
+      poseCache.set(key, hb);
+      return poseFromHand(hb, chord, rig);
+    }
+    const an = positionAnchor(P, rig, grip, home);
     const opts = {anc: an.anc, hoverP: P, hoverS: ss.length ? ss.reduce((a,b)=>a+b,0)/ss.length : 2.5, hoverT, style: GRIPS[grip]};
     // 手の位置（つけ根）は構えのまま。斜めの形では、人差し指のつけ根を支点に手の傾きだけ少し変えて指をのばす
     let prm = {...an.prm, dx1:0, dx2:0, dx3:0, dx4:0};
