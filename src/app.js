@@ -17,9 +17,9 @@ import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 import { fingerPlanRight, fingerStateAt } from './fingerpick.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
-               bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true, pickStyle:'finger', capoName:'sound'};   // capoName：カポの時に大きく出すコード名（sound＝実際の音／shape＝押さえる形）   // pickStyle：ソロの右手（finger＝指弾き / pick＝ピック）
+               bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true, pickStyle:'finger', capoName:'sound', boardMode:'all', key:'C', keyMinor:false};   // boardMode：コードのボード（all＝順に並べる／key＝キーで並べる）   // capoName：カポの時に大きく出すコード名（sound＝実際の音／shape＝押さえる形）   // pickStyle：ソロの右手（finger＝指弾き / pick＝ピック）
 // 設定は次に開いた時も同じになるように覚えておく（覚えられない端末ではそのまま）
-const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam','pickStyle','capoName'];
+const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam','pickStyle','capoName','boardMode','key','keyMinor'];
 try{ const sv = JSON.parse(localStorage.getItem('guitarSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
 const saveSettings = () => { try{ localStorage.setItem('guitarSettings', JSON.stringify(Object.fromEntries(SAVED.map(k=>[k, state[k]])))); }catch(e){} };
 let view = null, rig = null;
@@ -229,24 +229,67 @@ function splitName(name){
   return [R, name.slice(R.length)];
 }
 
+/* ---------- コードを選ぶボード ----------
+   順に並べる（all）：1段目に C・C♯・D…B、2段目にメジャー・m・7…の種類
+   キーで並べる（key）：選んだキー（調）のダイアトニックコード。1段目に3和音、2段目に4和音（セブンス）。上に度数（Ⅰ〜Ⅶ）*/
 const rootRow = document.getElementById('rootRow'), typeRow = document.getElementById('typeRow');
-ROOTS.forEach(r=>{
-  const b = document.createElement('button'); b.className='root-btn'; b.textContent=r.id; b.dataset.root=r.id;
-  b.onclick = ()=>{ const t = getChord(r.id+state.type) ? state.type : ''; pickChord(r.id+t); };
-  rootRow.appendChild(b);
-});
-TYPES.forEach(t=>{
-  const b = document.createElement('button'); b.textContent=t.label; b.dataset.type=t.id;
-  b.onclick = ()=>pickChord(state.root+t.id);
-  typeRow.appendChild(b);
-});
+const DIATONIC = {
+  major: {iv:[0,2,4,5,7,9,11], tri:['','m','m','','','m','dim'], sev:['maj7','m7','m7','maj7','7','m7','m7♭5']},
+  minor: {iv:[0,2,3,5,7,8,10], tri:['m','dim','','m','m','',''],  sev:['m7','m7♭5','maj7','m7','m7','maj7','7']},
+};
+const DEG = ['Ⅰ','Ⅱ','Ⅲ','Ⅳ','Ⅴ','Ⅵ','Ⅶ'];
+function diatonic(){
+  const D = DIATONIC[state.keyMinor ? 'minor' : 'major'], k = ROOTS.findIndex(r=>r.id===state.key);
+  return D.iv.map((iv,i)=>{ const r = ROOTS[(k + iv) % 12].id; return {deg: DEG[i], tri: r + D.tri[i], sev: r + D.sev[i]}; });
+}
+function chordBtn(name, sub){
+  const b = document.createElement('button'); b.dataset.chord = name;
+  b.innerHTML = (sub ? `<small class="deg">${sub}</small>` : '') + name;
+  b.disabled = !getChord(name);
+  b.onclick = ()=>pickChord(name);
+  return b;
+}
+function buildBoard(){
+  rootRow.innerHTML = ''; typeRow.innerHTML = '';
+  rootRow.classList.toggle('keymode', state.boardMode === 'key'); typeRow.classList.toggle('keymode', state.boardMode === 'key');
+  if(state.boardMode === 'key'){
+    for(const d of diatonic()){ rootRow.appendChild(chordBtn(d.tri, d.deg)); typeRow.appendChild(chordBtn(d.sev, d.deg)); }
+  } else {
+    ROOTS.forEach(r=>{
+      const b = document.createElement('button'); b.className='root-btn'; b.textContent=r.id; b.dataset.root=r.id;
+      b.onclick = ()=>{ const t = getChord(r.id+state.type) ? state.type : ''; pickChord(r.id+t); };
+      rootRow.appendChild(b);
+    });
+    TYPES.forEach(t=>{
+      const b = document.createElement('button'); b.textContent=t.label; b.dataset.type=t.id;
+      b.onclick = ()=>pickChord(state.root+t.id);
+      typeRow.appendChild(b);
+    });
+  }
+  document.querySelectorAll('#boardMode button').forEach(b=>b.classList.toggle('on', b.dataset.v === state.boardMode));
+  document.getElementById('keySel').hidden = state.boardMode !== 'key';
+  updateButtons();
+}
 function updateButtons(){
+  if(state.boardMode === 'key'){
+    const cur = chordName();
+    for(const row of [rootRow, typeRow]) row.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.chord === cur));
+    return;
+  }
   rootRow.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.root===state.root));
   typeRow.querySelectorAll('button').forEach(b=>{
     b.classList.toggle('on', b.dataset.type===state.type);
     b.disabled = !getChord(state.root+b.dataset.type);
   });
 }
+{
+  const ks = document.getElementById('keySel');
+  ks.innerHTML = ROOTS.map(r=>`<option value="${r.id}|">キー：${r.id}</option>`).join('') + ROOTS.map(r=>`<option value="${r.id}|m">キー：${r.id}m</option>`).join('');
+  ks.value = state.key + '|' + (state.keyMinor ? 'm' : '');
+  ks.onchange = ()=>{ const [k, m] = ks.value.split('|'); state.key = k; state.keyMinor = m === 'm'; saveSettings(); buildBoard(); };
+  document.querySelectorAll('#boardMode button').forEach(b=>b.onclick = ()=>{ state.boardMode = b.dataset.v; saveSettings(); buildBoard(); });
+}
+buildBoard();
 
 // ボタンの切り替え（ひとつだけ選べるグループ）
 function segment(id, fn){
@@ -359,7 +402,7 @@ function updateFs(){
 function setFS(on){
   fsOn = on;
   document.body.classList.toggle('fs', on);
-  if(on) fsBar.append(rootRow, typeRow); else document.querySelector('.side .picker').append(rootRow, typeRow);
+  if(on) fsBar.append(rootRow, typeRow); else document.querySelector('.side .picker .boardbar').after(rootRow, typeRow);
   fsBtn.textContent = on ? '✕' : '⛶'; fsBtn.title = on ? '全画面をやめる' : '全画面';
   try{
     if(on && !document.fullscreenElement) document.documentElement.requestFullscreen?.()?.catch?.(()=>{});

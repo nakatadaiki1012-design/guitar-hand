@@ -142,6 +142,13 @@
   .picker .row{display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
   .picker .row::-webkit-scrollbar{display:none}
   .picker .row+.row{margin-top:6px}
+  .boardbar{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  .boardbar .seg{display:inline-flex;border:1px solid var(--line, #ddd);border-radius:999px;overflow:hidden}
+  .boardbar .seg button{border:0;border-radius:0;padding:4px 12px;font-size:12px;background:transparent}
+  .boardbar .seg button.on{background:var(--accent, #0e9f9a);color:#fff}
+  .boardbar select{font-size:13px;padding:3px 6px;border-radius:8px}
+  .picker .row.keymode button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;line-height:1.15;padding-top:3px;padding-bottom:4px}
+  .picker .row.keymode button .deg{font-size:10px;opacity:.65;font-weight:600}
   .picker button{flex:1 0 auto;padding:6px 0;min-width:38px;font-weight:700}
   .picker #rootRow button{font-size:16px}
   .picker #typeRow button{font-size:13px}
@@ -348,6 +355,7 @@
   <!-- 右：コード選び＋タブ -->
   <div class="side">
     <section class="card picker">
+      <div class="boardbar"><span class="seg" id="boardMode"><button data-v="all">順に並べる</button><button data-v="key">キーで並べる</button></span><select id="keySel" hidden aria-label="キー"></select></div>
       <div class="row" id="rootRow"></div>
       <div class="row" id="typeRow"></div>
       <div class="caporow"><span>カポ</span><button id="capoDown" aria-label="カポを下げる">−</button><b id="capoVal">なし</b><button id="capoUp" aria-label="カポを上げる">＋</button>
