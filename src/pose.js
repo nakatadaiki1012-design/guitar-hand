@@ -79,7 +79,7 @@ function relaxedFinger(f, Lbone, K, T, H, lift, others=[], Mp=null){
     if(Mp){                                                               // 甲の骨から見て、つけ根は反らさず、少し（15°以上）曲げる
       const v0 = norm(sub(K, Mp)), v1 = norm(sub(pts[1], pts[0]));
       const a = Math.acos(Math.max(-1, Math.min(1, dot(v0, v1))))/DEG * (dot(sub(v1, v0), H.N) >= 0 ? 1 : -1);
-      cost += Math.pow(Math.max(0, 15 - a), 2) * 0.02;
+      cost += Math.pow(Math.max(0, 15 - a), 2) * 0.1;
     }
     if(!best || cost < best.cost) best = {cost, pts};
   }
@@ -124,7 +124,7 @@ function solveFinger(f, Lbone, K, T, H, kind, others=[], arch=false, Mp=null){
     const mcp = Math.atan2(dot(p1,H.N), dot(p1,H.F))/DEG;              // 付け根の関節（反らすのは苦手）
     if(Mp){                                                             // 甲の骨から見ても反らさない（人差し指・小指は骨が斜めなので、手の向きだけでは分からない）
       const v0 = norm(sub(K, Mp)), a = Math.acos(Math.max(-1, Math.min(1, dot(v0, p1))))/DEG * (dot(sub(p1, v0), H.N) >= 0 ? 1 : -1);
-      if(a < 0) pen += -a*0.6;
+      if(a < 0) pen += -a*1.5;
     }
     if(p2/DEG > 100) pen += (p2/DEG - 100)*0.3;                         // 第二関節の曲げすぎ
     if(mcp < -5) pen += (-5-mcp)*1.2;
@@ -298,7 +298,7 @@ function buildHand(chord, rig, prm, thumbStart, opts={}){
       const P = fingers[f].pts;
       for(let i=0;i<3;i++){
         const d = segDist(P[i], P[i+1], a, b), r = RAD[f][Math.min(3, i+1)]*0.9 + STRING_R[s2] + 0.4;
-        if(d < r) addc('mute'+f, (r-d)*(r-d)*3);
+        if(d < r) addc('mute'+f, (r-d)*(r-d)*30 + (r-d)*3);   // 少しでも触れると音が止まるので、強めに
       }
     }
   }
