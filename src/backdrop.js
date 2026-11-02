@@ -11,7 +11,9 @@ import { Q } from './quality.js';
 const D = Math.sqrt(Q.bg), CNT = n => Math.max(1, Math.round(n*Q.bg));
 
 function rng(seed){ return ()=>{ seed=(seed*16807)%2147483647; return (seed-1)/2147483646; }; }
-const canvas = (w, h) => { const c = document.createElement('canvas'); c.width = Math.round(w*D); c.height = Math.round(h*D); const g = c.getContext('2d'); g.scale(D, D); return [c, g]; };
+// cpu：あとで画素を読む（meanLinear）キャンバスは、最初から画面の外（CPU）で描く。
+// GPU で描いたキャンバスから画素を読むと、それまでの描画を全部待つことになり、起動が数秒止まっていた
+const canvas = (w, h, cpu=false) => { const c = document.createElement('canvas'); c.width = Math.round(w*D); c.height = Math.round(h*D); const g = c.getContext('2d', cpu ? {willReadFrequently: true} : undefined); g.scale(D, D); return [c, g]; };
 const tex = (c, repeat) => { const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   if(repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping; return t; };
 
@@ -22,7 +24,7 @@ const vOf = z => (NEAR_Z - z)/(NEAR_Z - FAR_Z);   // z → 0（手前）〜1（�
 
 /* ---------- 近くで見た時の細かい模様（くり返し貼る） ---------- */
 function sandGrain(){
-  const N = 512, [c, g] = canvas(N, N), r = rng(11);
+  const N = 512, [c, g] = canvas(N, N, true), r = rng(11);
   g.fillStyle = '#d9c7a0'; g.fillRect(0, 0, N, N);
   const cols = ['rgba(255,250,235,0.35)','rgba(170,138,98,0.25)','rgba(120,100,80,0.18)','rgba(235,215,180,0.4)','rgba(90,80,75,0.12)'];
   for(let i=0;i<CNT(30000);i++){ g.fillStyle = cols[(r()*cols.length)|0]; g.beginPath(); g.arc(r()*N, r()*N, 0.5+r()*1.1, 0, 6.283); g.fill(); }
@@ -30,7 +32,7 @@ function sandGrain(){
   return c;
 }
 function grassGrain(){
-  const N = 512, [c, g] = canvas(N, N), r = rng(17);
+  const N = 512, [c, g] = canvas(N, N, true), r = rng(17);
   g.fillStyle = '#5f8f3a'; g.fillRect(0, 0, N, N);
   const greens = ['#4a7a2c','#6fa045','#86b555','#3d6824','#9cc466','#557f30'];
   for(let i=0;i<CNT(9000);i++){                  // 草の葉：短い線をいろいろな向き・緑で
@@ -46,7 +48,7 @@ function grassGrain(){
   return c;
 }
 function plankGrain(){
-  const W = 512, H = 512, [c, g] = canvas(W, H), r = rng(29);
+  const W = 512, H = 512, [c, g] = canvas(W, H, true), r = rng(29);
   const n = 4, ph = H/n;                          // 板4枚（1枚12.5cm）
   for(let i=0;i<n;i++){
     const tone = 0.85 + r()*0.25;

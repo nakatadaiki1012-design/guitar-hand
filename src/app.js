@@ -1279,7 +1279,8 @@ createView({
   const busy = () => playing() || tabs.running || tabs.preparing || poseFrom || oneShot || wasMoving;
   // 右手のしなり（3度きざみ）の形も先に作っておく（最初の数回の振りで引っかからないように）
   rest.unshift(...[-9,-6,-3,0,3,6,9,12].map(f=>()=>view.rightHandPose(view.rigR, {theta:0, lift:0, wrist:0, roll:0, flick:f})));
-  rest.push(...view.prebuildBackdrops());                         // ほかの背景も（選んだ時に待たないように）
+  // ほかの背景は、設定を開いた時に（選びそうな時だけ）1つずつ作っておく。起動直後に作ると、その間ボタンが反応しない
+  document.getElementById('gearBtn').addEventListener('click', ()=>{ const jobs = view.prebuildBackdrops(); const next = () => { const j = jobs.shift(); if(j){ j(); setTimeout(next, 120); } }; setTimeout(next, 250); }, {once:true});
   const work = dl => {
     if(busy()){ setTimeout(()=>idle(work), 800); return; }
     while(rest.length && dl.timeRemaining() > 4 && !busy()){ const job = rest.shift(); typeof job === 'function' ? job() : chordPose(job); }
