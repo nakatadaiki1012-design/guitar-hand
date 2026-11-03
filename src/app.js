@@ -771,6 +771,18 @@ renderSong();
    開放弦の音では、左手はその前の位置のまま（指は弦から離す） */
 const tabs = {list:[], idx:0, running:false, timer:null, t0:0, bs:0.6, next:0, hl:-1, prep:0, shown:-1, from:0, start:0, clickBase:0};   // from：弾き始める音（タブ譜で選ぶ）、start：演奏中の、いま始めた音
 const TAB = () => tabs.list[tabs.idx];
+tabs.glowAt = Array(6).fill(-1e9);
+// ソロで弾く弦を光らせる強さ（弦ごと 0〜1）。演奏中は鳴った瞬間に明るく、0.5秒ほどで消える。止まっている時は、選んだ音の弦をうっすら
+function tabGlow(){
+  if(activeTab() !== 'tabs') return null;
+  if(tabs.running && actx){
+    const t = heardTime();
+    return tabs.glowAt.map(w => t >= w - 0.01 ? Math.exp(-Math.max(0, t - w)/0.28) : 0);
+  }
+  const e = tabs.shown >= 0 && TAB() && TAB().events[tabs.shown];
+  if(!e) return null;
+  const g = Array(6).fill(0); for(const n of e.notes) g[n.s] = 0.55; return g;
+}
 function loadTabSongs(){
   // 伴奏のコードがある曲は、コードの形を押さえたまま弾く
   tabs.list = TAB_SONGS.map(sg=>{ const r = parseCompact(sg.tab); applyChordHold(r.events, sg.chords, sg.pickup, sg.shapes); markSweep(r.events); return {...sg, ...r}; });
@@ -1015,6 +1027,7 @@ function tickTab(){
     const e = sg.events[tabs.next++], when = tabs.t0 + e.t*tabs.bs;
     const ss = e.notes.slice().sort((a,b)=>a.s-b.s);
     ss.forEach((n,k)=>playString(n.s, n.f, when + k*0.012, ss.length > 1 ? 0.34 : 0.46));
+    for(const n of ss) tabs.glowAt[n.s] = when;                          // この弦を、鳴った時から光らせる
     // ベースとメロディを同時に弾く時は、ピックがその間の弦も通る。間の弦がコードの音なら、少し小さく一緒に鳴らす
     if(e.sweep && state.pickStyle !== 'finger') for(const w of e.sweep) playString(w.s, w.f, when + (w.s - ss[0].s)*0.012, 0.2);
   }
@@ -1051,7 +1064,7 @@ async function startTab(){
   tabs.bs = beatSec(+tabBpm.value);
   const cin = sg.beats + (from ? 0 : (sg.pickup || 0));            // 1小節カウント（弱起の曲は最初から弾く時だけその分も）
   tabs.t0 = actx.currentTime + 0.3 + cin*tabs.bs - sb*tabs.bs; tabs.next = s0; tabs.start = s0; tabs.click = -cin; tabs.clickBase = sb;
-  tabs.running = true; tabs.shown = -1;
+  tabs.running = true; tabs.shown = -1; tabs.glowAt.fill(-1e9);
   btn.textContent = '■ ストップ';
   tabs.timer = setInterval(tickTab, 25);
   tickTab(); kick(); updateFs();
@@ -1240,7 +1253,8 @@ function loop(now){
     } else pose = currentPose(now);
     if(!tabOn) right = showRight ? rightState(now, pl, phR) : null;
     right = window.__forceRight || smoothRight(right, now);
-    view.render(pose, {...state, right, quality, animating: handMoving || active});
+    const glow = tabGlow();
+    view.render(pose, {...state, right, quality, glow, animating: handMoving || active || !!(glow && tabs.running)});
     dirty = false;
   }
   wasMoving = moving;

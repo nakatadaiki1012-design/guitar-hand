@@ -267,6 +267,7 @@ export async function createView({mainCanvas, mainOverlay, onTap}){
   const basePR = Math.min(window.devicePixelRatio||1, Q.pr);
   let curPR = basePR, lastPose = null, lastGhost = null, lastLeft = null;
   function render(pose, opts){
+    if(gtr) gtr.setGlow(opts.glow);                                   // ソロ：弾いた弦を光らせる
     // 動いている間は解像度を少し下げる（重い端末でカクカクしないように）
     const pr = Math.max(0.75, Math.round(basePR*(opts.quality ?? 1)*20)/20);
     if(pr !== curPR){ curPR = pr; renderer.setPixelRatio(pr); }

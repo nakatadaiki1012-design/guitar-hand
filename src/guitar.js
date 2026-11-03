@@ -540,11 +540,27 @@ export function buildGuitar(){
   /* ---------- 弦（コードごとに形が変わる） ---------- */
   const wound = std({color: electric ? '#c9c4ba' : '#c9a061', metalness:1, roughness:0.38});
   const plain = std({color:'#dcdcde', metalness:1, roughness:0.22});
+  // 弾く弦を光らせる（ソロ）：弦ごとに、鳴る部分（押さえた所〜サドル）用の光る材質と、まわりのぼんやりした光
+  const glowCol = new THREE.Color('#ffd25a');
+  const glowMat = Array.from({length:NSTR}, (_,s)=>{ const m = (s < G.wound ? wound : plain).clone(); m.emissive = glowCol.clone(); m.emissiveIntensity = 0; return m; });
+  const haloMat = Array.from({length:NSTR}, ()=>new THREE.MeshBasicMaterial({color: glowCol, transparent:true, opacity:0, depthWrite:false, blending:THREE.AdditiveBlending, toneMapped:false}));
   const strings = Array.from({length:NSTR}, (_,s)=>{
     const segs = [];
     for(let k=0;k<8;k++){ const m = new THREE.Mesh(UNIT_CYL, s < G.wound ? wound : plain); m.castShadow = true; g.add(m); segs.push(m); }
+    segs.halo = [];
+    for(let k=0;k<4;k++){ const h = new THREE.Mesh(UNIT_CYL, haloMat[s]); h.renderOrder = 8; h.visible = false; g.add(h); segs.halo.push(h); }
     return segs;
   });
+  const glowNow = Array(NSTR).fill(0);
+  // v：弦ごとの光の強さ（0〜1）
+  function setGlow(v){
+    for(let s=0;s<NSTR;s++){
+      const a = Math.max(0, Math.min(1, (v && v[s]) || 0));
+      if(a === glowNow[s]) continue; glowNow[s] = a;
+      glowMat[s].emissiveIntensity = a*3; haloMat[s].opacity = a*0.75;
+      strings[s].halo.forEach(h=>h.visible = a > 0.01 && h.userData.used);
+    }
+  }
   const SADDLE_COMP = lp ? [4.1,3.5,3.1,2.5,2.1,1.7] : electric ? [3.2,2.6,2.2,1.4,1.0,0.4] : [3.4,2.8,2.2,3.0,2.0,1.0];
   // カポで押さえられた所：弦はカポのゴムでフレットに押しつけられる
   let capoN = 0;
@@ -562,7 +578,17 @@ export function buildGuitar(){
       pts.push([sx, y(sx), stringZ(sx)+r]);
       if(lp){ const [tx, ty] = lpTail(s); pts.push([tx, ty, lpTailZ]); }
       else pts.push(strat ? [SCALE_LEN+35, y(SCALE_LEN), BODY_TOP+6.5] : [SCALE_LEN+16, y(SCALE_LEN), BODY_TOP+8.6]);
-      segs.forEach((m,k)=>{ if(k < pts.length-1) placeSeg(m, pts[k], pts[k+1], r); else m.visible = false; });
+      // 鳴る部分：押さえた所（なければカポ・ナット）からサドルまで
+      const x0 = info ? info.fret : cp > 0 ? fretX(cp) : 0;
+      let hk = 0;
+      segs.forEach((m,k)=>{
+        if(k >= pts.length-1){ m.visible = false; return; }
+        placeSeg(m, pts[k], pts[k+1], r);
+        const vib = pts[k][0] >= x0 - 0.5 && pts[k+1][0] <= sx + 0.5;
+        m.material = vib ? glowMat[s] : (s < G.wound ? wound : plain);
+        if(vib && hk < segs.halo.length){ const h = segs.halo[hk++]; placeSeg(h, pts[k], pts[k+1], r*3 + 1.6); h.userData.used = true; h.visible = glowNow[s] > 0.01; }
+      });
+      for(; hk < segs.halo.length; hk++){ segs.halo[hk].userData.used = false; segs.halo[hk].visible = false; }
     }
   }
   setStrings(null);
@@ -614,5 +640,5 @@ export function buildGuitar(){
   }
   let lastInfo = null;
   const setStringsKeep = info => { lastInfo = info; setStrings(info); };
-  return {group: g, setStrings: setStringsKeep, setFinish, setCapo, type};
+  return {group: g, setStrings: setStringsKeep, setFinish, setCapo, setGlow, type};
 }
