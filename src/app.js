@@ -12,14 +12,14 @@ import { createView, VIEWS } from './view.js';
 import { BACKDROPS } from './backdrop.js';
 import { FINISHES } from './guitar.js';
 import { GUITARS, NSTR, strY, STRUM_X, stringZ, STRING_R, fretX, FRET_TOP, SCALE_LEN, halfW } from './geom.js';
-import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, eventChord, eventPressed, noteName, fingerPlan, applyChordHold, markSweep } from './tab.js';
+import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, readMscz, parseMscx, readGp, parseGpif, setImportBass, eventChord, eventPressed, noteName, fingerPlan, applyChordHold, markSweep } from './tab.js';
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 import { fingerPlanRight, fingerStateAt } from './fingerpick.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
-               bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true, pickStyle:'finger', capoName:'sound', boardMode:'all', key:'C', keyMinor:false};   // boardMode：コードのボード（all＝順に並べる／key＝キーで並べる）   // capoName：カポの時に大きく出すコード名（sound＝実際の音／shape＝押さえる形）   // pickStyle：ソロの右手（finger＝指弾き / pick＝ピック）
+               bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true, avDelay:0, pickStyle:'finger', capoName:'sound', boardMode:'all', key:'C', keyMinor:false};   // boardMode：コードのボード（all＝順に並べる／key＝キーで並べる）   // capoName：カポの時に大きく出すコード名（sound＝実際の音／shape＝押さえる形）   // pickStyle：ソロの右手（finger＝指弾き / pick＝ピック）
 // 設定は次に開いた時も同じになるように覚えておく（覚えられない端末ではそのまま）
-const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam','pickStyle','capoName','boardMode','key','keyMinor'];
+const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam','avDelay','pickStyle','capoName','boardMode','key','keyMinor'];
 try{ const sv = JSON.parse(localStorage.getItem('guitarSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
 const saveSettings = () => { try{ localStorage.setItem('guitarSettings', JSON.stringify(Object.fromEntries(SAVED.map(k=>[k, state[k]])))); }catch(e){} };
 let view = null, rig = null;
@@ -115,7 +115,8 @@ function setTone(){
 const bufCache = {};
 function ensureAudio(){
   if(!actx){
-    actx = new (window.AudioContext||window.webkitAudioContext)();
+    const AC = window.AudioContext||window.webkitAudioContext;
+    try{ actx = new AC({latencyHint:'interactive'}); }catch(e){ actx = new AC(); }   // 音の遅れがいちばん小さい設定で
     master = actx.createGain(); master.gain.value = 0.7;
     tone.body = actx.createBiquadFilter(); tone.body.type='peaking'; tone.body.Q.value=1.1;
     tone.lp = actx.createBiquadFilter(); tone.lp.type='lowpass';
@@ -215,7 +216,7 @@ function currentPose(now){
   return blendPose(poseFrom, poseTo, t);
 }
 window.setChord = setChord; window.__strumState = strumState;
-window.__dbg = {get tabRight(){ return tabRight; }, chordPose: n => chordPose(n), dumpPoseTable, setPoseTable, clearCache: () => clearPoseCache(), chordNames: () => Object.keys(CHORDS), tabSongs: () => tabs.list, prep: (sg, i) => tabEventPose(sg, i), TAB: () => TAB(), get tabs(){ return tabs; }, kick: () => kick(), state, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R, poseParts, fretX, FRET_TOP: () => FRET_TOP, SCALE_LEN: () => SCALE_LEN, halfW, getChord, CHORDS};   // 検証用（動きの数値を外から見る）
+window.__dbg = {get tabRight(){ return tabRight; }, heard: () => heardTime(), chordPose: n => chordPose(n), dumpPoseTable, setPoseTable, clearCache: () => clearPoseCache(), chordNames: () => Object.keys(CHORDS), tabSongs: () => tabs.list, prep: (sg, i) => tabEventPose(sg, i), TAB: () => TAB(), get tabs(){ return tabs; }, kick: () => kick(), state, beatSec: bpm => beatSec(bpm), strY, STRUM_X: () => STRUM_X, stringZ, STRING_R: () => STRING_R, poseParts, fretX, FRET_TOP: () => FRET_TOP, SCALE_LEN: () => SCALE_LEN, halfW, getChord, CHORDS};   // 検証用（動きの数値を外から見る）
 // コードのボタンを押した時：手がすばやく次の形になり、押さえ終わると同時にジャラーンと鳴る
 function pickChord(name){
   if(prog.running || song.running || tabs.running){ return; }              // 練習・曲デモの演奏中はコードを変えない
@@ -357,6 +358,31 @@ choiceRow('optCapoName', [['sound','実際の音を大きく'],['shape','押さ�
   else if(activeTab() === 'tabs' && tabs.shown >= 0) showTabEvent(tabs.shown, true);
   else if(!prog.running && !song.running) setChord(chordName(), false);
 });
+/* ---------- 音と動きのずれ（レイテンシー）
+   音はスピーカーから出るまでに少し遅れる。ふつうはブラウザが遅れを教えてくれるので自動で合わせるが、
+   Bluetoothのイヤホンなどでは分からないことがあるので、手で合わせられるようにする。
+   「合わせる」を押すと、カチッという音と画面の光が一緒に出るので、ぴったり重なるようにつまみを動かす */
+{
+  const sl = document.getElementById('avDelay'), val = document.getElementById('avDelayVal'), btn = document.getElementById('avTest'), auto = document.getElementById('avAuto');
+  const show = () => { val.textContent = (state.avDelay > 0 ? '+' : '') + state.avDelay + 'ms'; };
+  sl.value = state.avDelay || 0; show();
+  sl.oninput = () => { state.avDelay = +sl.value; show(); saveSettings(); kick(); };
+  const flash = document.createElement('div'); flash.id = 'syncFlash'; flash.hidden = true; document.getElementById('mainWrap').appendChild(flash);
+  let test = null;
+  const stop = () => { if(!test) return; clearInterval(test.timer); cancelAnimationFrame(test.raf); test = null; flash.hidden = true; btn.textContent = '合わせる'; };
+  btn.onclick = () => {
+    if(test){ stop(); return; }
+    ensureAudio();
+    const P = 0.75, t0 = actx.currentTime + 0.3; let k = 0;
+    test = {};
+    test.timer = setInterval(()=>{ while(t0 + k*P < actx.currentTime + 0.2){ click(t0 + k*P, k % 4 === 0); k++; } }, 40);
+    const draw = () => { if(!test) return; const ph = heardTime() - t0, u = ph - Math.round(ph/P)*P; flash.style.opacity = Math.max(0, 1 - Math.abs(u)/0.07).toFixed(2);
+      if(actx.outputLatency || actx.baseLatency) auto.textContent = `ブラウザが教えてくれる遅れ：約${Math.round(((actx.outputLatency || 0) + (actx.baseLatency || 0))*1000)}ms（自動で合わせています）`;
+      test.raf = requestAnimationFrame(draw); };
+    flash.hidden = false; btn.textContent = 'やめる'; draw();
+  };
+  document.getElementById('setClose').addEventListener('click', stop);
+}
 // 軽さ（画質）：変えると読み込み直す
 state.qlevel = QUALITY_LEVEL;
 choiceRow('optQuality', [['auto', `自動（この端末：${TIERS[DETECTED.tier].label}）`], ...Object.entries(TIERS).map(([k,t])=>[k, t.label])], 'qlevel',
@@ -434,7 +460,8 @@ function heardTime(){
   const ts = actx.getOutputTimestamp ? actx.getOutputTimestamp() : null;
   if(ts && ts.performanceTime > 0) t = ts.contextTime + (performance.now() - ts.performanceTime)/1000;
   else t = actx.currentTime - (actx.outputLatency || actx.baseLatency || 0);
-  if(t < lastHeard) t = lastHeard;                          // 時計が戻らないように
+  t -= (state.avDelay || 0)/1000;                          // 設定の「音と動きのずれ」（Bluetoothのイヤホンなど、端末が教えてくれない遅れの分）
+  if(t < lastHeard && lastHeard - t < 0.05) t = lastHeard;  // 時計が戻らないように（設定を変えた時の大きな戻りは許す）
   return (lastHeard = t);
 }
 /* スイング：「タッ・カ・タッ・カ」の、裏の8分音符を少し遅らせる。
@@ -1102,18 +1129,39 @@ function addImported(res, title){
   tabMsg.textContent = `「${title}」を取り込みました（${sg.events.length}音）。押さえる指は自動で決めています`;
 }
 const fail = e => { tabMsg.className = 'msg bad'; tabMsg.textContent = '取り込めませんでした：' + (e.message || e); };
-document.getElementById('tabFile').onchange = async ev=>{
-  const f = ev.target.files[0]; ev.target.value = '';
-  if(!f) return;
+/* ファイルを読む：拡張子と中身から形式を見分ける
+   MIDI・MusicXML（.musicxml / .xml / .mxl）・MuseScore（.mscz / .mscx）・Guitar Pro 7/8（.gp）・文字のタブ譜（.txt など） */
+async function importFile(f){
   const name = f.name.replace(/\.[^.]+$/, ''), ext = (f.name.match(/\.([^.]+)$/)?.[1] || '').toLowerCase();
+  tabMsg.className = 'msg'; tabMsg.textContent = `「${f.name}」を読み込み中…`;
   try{
+    setImportBass(document.getElementById('impBass').checked);
+    const buf = await f.arrayBuffer(), head = new Uint8Array(buf, 0, Math.min(4, buf.byteLength));
+    const isZip = head[0] === 0x50 && head[1] === 0x4b, isMidi = String.fromCharCode(...head) === 'MThd';
     let res;
-    if(ext === 'mid' || ext === 'midi') res = parseMidi(await f.arrayBuffer());
-    else if(ext === 'mxl') res = parseMusicXML(await readMxl(await f.arrayBuffer()));
-    else { const text = await f.text(); res = /<score-(partwise|timewise)/.test(text) ? parseMusicXML(text) : parseTabText(text); }
+    if(isMidi || ext === 'mid' || ext === 'midi') res = parseMidi(buf);
+    else if(ext === 'mscz' || (isZip && ext === 'mscz')) res = parseMscx(await readMscz(buf));
+    else if(/^gp[x345]?$/.test(ext)) res = parseGpif(await readGp(buf));
+    else if(ext === 'mxl' || isZip) res = parseMusicXML(await readMxl(buf));
+    else {
+      const text = new TextDecoder().decode(buf);
+      if(/<score-(partwise|timewise)/.test(text)) res = parseMusicXML(text);
+      else if(/<museScore/.test(text)) res = parseMscx(text);
+      else if(/<GPIF/.test(text)) res = parseGpif(text);
+      else res = parseTabText(text);
+    }
     addImported(res, name);
+    if(res.info) tabMsg.textContent += '。' + res.info;
   }catch(e){ console.error(e); fail(e); }
-};
+}
+document.getElementById('tabFile').onchange = ev=>{ const f = ev.target.files[0]; ev.target.value = ''; if(f) importFile(f); };
+// ファイルをソロの画面に落としても取り込める
+{
+  const zone = document.getElementById('tab-tabs');
+  zone.addEventListener('dragover', e=>{ if([...(e.dataTransfer?.types || [])].includes('Files')){ e.preventDefault(); zone.classList.add('drop'); } });
+  zone.addEventListener('dragleave', e=>{ if(e.target === zone) zone.classList.remove('drop'); });
+  zone.addEventListener('drop', e=>{ e.preventDefault(); zone.classList.remove('drop'); const f = e.dataTransfer.files[0]; if(f){ document.querySelector('#tab-tabs details.import').open = true; importFile(f); } });
+}
 document.getElementById('tabPasteGo').onclick = ()=>{
   const text = document.getElementById('tabPaste').value;
   try{ addImported(parseTabText(text), document.getElementById('tabPasteName').value.trim() || '貼り付けたタブ譜'); }catch(e){ fail(e); }

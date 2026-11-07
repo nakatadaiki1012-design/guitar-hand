@@ -93,14 +93,17 @@ export function parseMidi(buf){
   for(let tr=0; tr<ntr && p < d.byteLength; tr++){
     const id = str(4), len = u32(), end = p + len;
     if(id !== 'MTrk'){ p = end; continue; }
-    let t = 0, run = 0; const on = {}, notes = [];
+    let t = 0, run = 0, name = ''; const on = {}, notes = [];
     const vlq = () => { let v = 0, b; do { b = d.getUint8(p++); v = (v<<7) | (b&0x7f); } while(b & 0x80); return v; };
     while(p < end){
       t += vlq();
       let st = d.getUint8(p);
       if(st & 0x80){ p++; if(st < 0xf0) run = st; } else st = run;
       const type = st & 0xf0, ch = st & 0x0f;
-      if(st === 0xff){ const mt = d.getUint8(p++), ml = vlq(); if(mt === 0x51 && !tempo) tempo = (d.getUint8(p)<<16)|(d.getUint8(p+1)<<8)|d.getUint8(p+2); p += ml; }
+      if(st === 0xff){ const mt = d.getUint8(p++), ml = vlq();
+        if(mt === 0x51 && !tempo) tempo = (d.getUint8(p)<<16)|(d.getUint8(p+1)<<8)|d.getUint8(p+2);
+        if(mt === 0x03 && !name) name = new TextDecoder().decode(new Uint8Array(buf, p, ml));
+        p += ml; }
       else if(st === 0xf0 || st === 0xf7){ p += vlq(); }
       else if(type === 0x90 || type === 0x80){
         const n = d.getUint8(p++), v = d.getUint8(p++);
@@ -112,79 +115,288 @@ export function parseMidi(buf){
       else p += 2;
     }
     p = end;
-    if(notes.length) tracks.push(notes);
+    if(notes.length) tracks.push({name, notes});
   }
   if(!tracks.length) throw new Error('音が入っていませんでした');
-  // いちばん音の多いトラックをメロディとして使う（同時に鳴る音は、いちばん高い音だけ）
-  tracks.sort((a,b)=>b.length - a.length);
+  // メロディのトラック：名前に melody / vocal / lead などがあればそれ。なければ、ある程度音の多いトラックのうち、いちばん高い音域のもの
+  const big = tracks.filter(tr => tr.notes.length >= Math.min(20, Math.max(...tracks.map(x=>x.notes.length))));
+  const mean = tr => tr.notes.reduce((a,n)=>a+n.m, 0)/tr.notes.length;
+  const lead = tracks.find(tr => /melod|vocal|voice|lead|sing|メロ|歌/i.test(tr.name)) || big.sort((a,b)=>mean(b)-mean(a))[0];
+  const all = tracks.flatMap(tr => tr.notes);
   const bpm = tempo ? Math.round(60e6/tempo) : 100;
-  return {...fromPitches(skyline(tracks[0])), bpm, info:`MIDIの${tracks.length}つのトラックのうち、いちばん音の多いトラックから取り込みました`};
+  const r = fromNotes(lead.notes, all);
+  return {...r, bpm, info:`MIDI（${tracks.length}トラック）から取り込みました。メロディは「${lead.name || 'いちばん高い音域のトラック'}」、${r.bassN ? 'ベースはいちばん低い音から' : 'ベースなし'}`};
+}
+
+/* ---------- zip（.mxl / .mscz / .gp はどれも zip） ---------- */
+export async function unzip(buf){
+  const d = new DataView(buf), u8 = new Uint8Array(buf), files = {};
+  let e = -1; for(let i = d.byteLength - 22; i >= Math.max(0, d.byteLength - 66000); i--) if(d.getUint32(i, true) === 0x06054b50){ e = i; break; }
+  if(e < 0) throw new Error('ファイルが壊れているか、対応していない形式です');
+  let p = d.getUint32(e + 16, true); const n = d.getUint16(e + 10, true);
+  for(let k=0; k<n && d.getUint32(p, true) === 0x02014b50; k++){
+    const method = d.getUint16(p+10, true), csize = d.getUint32(p+20, true), nlen = d.getUint16(p+28, true), xlen = d.getUint16(p+30, true), clen = d.getUint16(p+32, true), lo = d.getUint32(p+42, true);
+    const name = new TextDecoder().decode(u8.subarray(p+46, p+46+nlen));
+    const ds = lo + 30 + d.getUint16(lo+26, true) + d.getUint16(lo+28, true);
+    files[name] = {method, data: u8.subarray(ds, ds + csize)};
+    p += 46 + nlen + xlen + clen;
+  }
+  return files;
+}
+async function zipText(f){
+  if(f.method === 0) return new TextDecoder().decode(f.data);
+  if(typeof DecompressionStream === 'undefined') throw new Error('このブラウザでは圧縮されたファイルを開けません（新しいブラウザでお試しください）');
+  const s = new Blob([f.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return await new Response(s).text();
 }
 
 /* ---------- MusicXML ---------- */
 export async function readMxl(buf){
-  // .mxl は zip。中の楽譜ファイル（META-INF 以外の .xml / .musicxml）を取り出す
-  const d = new DataView(buf); let p = 0; const files = {};
-  while(p + 30 < d.byteLength && d.getUint32(p, true) === 0x04034b50){
-    const method = d.getUint16(p+8, true), csize = d.getUint32(p+18, true), nlen = d.getUint16(p+26, true), xlen = d.getUint16(p+28, true);
-    const name = new TextDecoder().decode(new Uint8Array(buf, p+30, nlen));
-    const data = new Uint8Array(buf, p+30+nlen+xlen, csize);
-    files[name] = {method, data};
-    p += 30 + nlen + xlen + csize;
-  }
-  const name = Object.keys(files).find(n => !n.startsWith('META-INF') && /\.(xml|musicxml)$/i.test(n));
+  // .mxl は zip。META-INF/container.xml に書いてある楽譜ファイル（なければ META-INF 以外の .xml / .musicxml）を取り出す
+  const files = await unzip(buf);
+  let name = null;
+  if(files['META-INF/container.xml']){ const m = (await zipText(files['META-INF/container.xml'])).match(/full-path="([^"]+)"/); if(m && files[m[1]]) name = m[1]; }
+  name ||= Object.keys(files).find(n => !n.startsWith('META-INF') && /\.(xml|musicxml)$/i.test(n));
   if(!name) throw new Error('.mxl の中に楽譜が見つかりませんでした');
-  const f = files[name];
-  if(f.method === 0) return new TextDecoder().decode(f.data);
-  if(typeof DecompressionStream === 'undefined') throw new Error('このブラウザでは .mxl を開けません（.musicxml で保存してください）');
-  const s = new Blob([f.data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
-  return await new Response(s).text();
+  return zipText(files[name]);
 }
 export function parseMusicXML(text){
   const doc = new DOMParser().parseFromString(text, 'application/xml');
-  const part = doc.querySelector('part');
-  if(!part) throw new Error('MusicXMLの楽譜が見つかりませんでした');
-  let div = 1, t = 0, lastT = 0, octShift = 0, bpm = 0;
-  const raw = [];
+  const parts = [...doc.querySelectorAll('part')];
+  if(!parts.length) throw new Error('MusicXMLの楽譜が見つかりませんでした');
+  const names = {}; doc.querySelectorAll('score-part').forEach(sp => names[sp.id] = sp.querySelector('part-name')?.textContent || '');
+  let bpm = 0;
   const q = (el, sel) => el.querySelector(sel);
-  for(const meas of part.querySelectorAll(':scope > measure')){
-    for(const el of meas.children){
-      if(el.tagName === 'attributes'){
-        const dv = q(el, 'divisions'); if(dv) div = +dv.textContent || 1;
-        const oc = q(el, 'transpose octave-change') || q(el, 'clef clef-octave-change'); if(oc) octShift = +oc.textContent || 0;
-      } else if(el.tagName === 'direction' || el.tagName === 'sound'){
-        const snd = el.tagName === 'sound' ? el : q(el, 'sound'); if(snd?.getAttribute('tempo') && !bpm) bpm = Math.round(+snd.getAttribute('tempo'));
-      } else if(el.tagName === 'backup'){ t -= +q(el,'duration').textContent/div; }
-      else if(el.tagName === 'forward'){ t += +q(el,'duration').textContent/div; }
-      else if(el.tagName === 'note'){
-        if(q(el, 'grace')) continue;
-        const dur = +(q(el, 'duration')?.textContent || 0)/div;
-        const chord = !!q(el, 'chord');
-        const start = chord ? lastT : t;
-        if(!chord) { lastT = t; t += dur; }
-        if(q(el, 'rest')) continue;
-        const tie = el.querySelector('tie[type="stop"]');
-        const ps = q(el, 'pitch'); if(!ps) continue;
-        const step = q(ps,'step').textContent, alter = +(q(ps,'alter')?.textContent || 0), oct = +q(ps,'octave').textContent;
-        const m = 12*(oct+1) + {C:0,D:2,E:4,F:5,G:7,A:9,B:11}[step] + alter + 12*octShift;
-        const sEl = q(el, 'technical string'), fEl = q(el, 'technical fret');
-        if(tie){ let prev = null; for(let i=raw.length-1;i>=0;i--) if(raw[i].m === m){ prev = raw[i]; break; }
-                 if(prev){ prev.d = start + dur - prev.t; continue; } }
-        raw.push({m, t: start, d: dur, s: sEl ? NS - +sEl.textContent : null, f: fEl ? +fEl.textContent : null});
+  const read = part => {
+    let div = 1, t = 0, lastT = 0, octShift = 0;
+    const raw = [];
+    for(const meas of part.querySelectorAll(':scope > measure')){
+      for(const el of meas.children){
+        if(el.tagName === 'attributes'){
+          const dv = q(el, 'divisions'); if(dv) div = +dv.textContent || 1;
+          const oc = q(el, 'transpose octave-change'); if(oc) octShift = +oc.textContent || 0;
+        } else if(el.tagName === 'direction' || el.tagName === 'sound'){
+          const snd = el.tagName === 'sound' ? el : q(el, 'sound'); if(snd?.getAttribute('tempo') && !bpm) bpm = Math.round(+snd.getAttribute('tempo'));
+        } else if(el.tagName === 'backup'){ t -= +q(el,'duration').textContent/div; }
+        else if(el.tagName === 'forward'){ t += +q(el,'duration').textContent/div; }
+        else if(el.tagName === 'note'){
+          if(q(el, 'grace')) continue;
+          const dur = +(q(el, 'duration')?.textContent || 0)/div;
+          const chord = !!q(el, 'chord');
+          const start = chord ? lastT : t;
+          if(!chord) { lastT = t; t += dur; }
+          if(q(el, 'rest')) continue;
+          const tie = el.querySelector('tie[type="stop"]');
+          const ps = q(el, 'pitch'); if(!ps) continue;
+          const step = q(ps,'step').textContent, alter = +(q(ps,'alter')?.textContent || 0), oct = +q(ps,'octave').textContent;
+          const m = 12*(oct+1) + {C:0,D:2,E:4,F:5,G:7,A:9,B:11}[step] + alter + 12*octShift;
+          const sEl = q(el, 'technical string'), fEl = q(el, 'technical fret'), staff = +(q(el, 'staff')?.textContent || 1);
+          if(tie){ let prev = null; for(let i=raw.length-1;i>=0;i--) if(raw[i].m === m){ prev = raw[i]; break; }
+                   if(prev){ prev.d = start + dur - prev.t; continue; } }
+          raw.push({m, t: start, d: dur, staff, s: sEl ? NS - +sEl.textContent : null, f: fEl ? +fEl.textContent : null});
+        }
       }
     }
-  }
-  if(!raw.length) throw new Error('音が入っていませんでした');
-  const hasTab = raw.every(n => n.s != null && n.f != null && n.s >= 0 && n.s < NS);
-  if(hasTab){
-    const byT = new Map();
-    for(const n of raw){ const k = Math.round(n.t*48); if(!byT.has(k)) byT.set(k, {t: n.t, d: n.d, notes: []}); const e = byT.get(k); if(!e.notes.some(x=>x.s===n.s)) e.notes.push({s: n.s, f: n.f}); e.d = Math.max(e.d, n.d); }
-    return {...finish([...byT.values()].sort((a,b)=>a.t-b.t), true), bpm: bpm || 90, info:'タブ譜（弦とフレット）つきのMusicXMLから取り込みました'};
-  }
-  return {...fromPitches(skyline(raw)), bpm: bpm || 90, info:'MusicXMLの1つ目のパートから、メロディ（いちばん高い音）を取り込みました'};
+    return raw;
+  };
+  const all = parts.map(pt => ({id: pt.id, name: names[pt.id] || '', notes: read(pt)})).filter(x=>x.notes.length);
+  if(!all.length) throw new Error('音が入っていませんでした');
+  // ギターのタブ譜（弦とフレット）が入ったパートがあれば、それをそのまま使う
+  const tab = all.find(x => tabOK(x.notes));
+  if(tab) return {...fromTab(tab.notes), bpm: bpm || 90, info:`「${tab.name || 'ギター'}」のタブ譜（弦とフレット）をそのまま取り込みました`};
+  // なければ：メロディは最初のパート（の上の段）、ベースは全部のパートのいちばん低い音
+  const lead = all.find(x => /guitar|ギター/i.test(x.name)) || all[0];
+  const mel = lead.notes.filter(n => n.staff === 1);
+  const r = fromNotes(mel.length ? mel : lead.notes, all.flatMap(x=>x.notes));
+  return {...r, bpm: bpm || 90, info:`MusicXML（${all.length}パート）から取り込みました。メロディは「${lead.name || '1つ目のパート'}」、${r.bassN ? 'ベースはいちばん低い音から' : 'ベースなし'}`};
 }
 
-// 同時に鳴る音のうち、いちばん高い音だけ残す（メロディだけにする）
+/* ---------- MuseScore（.mscz は zip、中身は .mscx） ---------- */
+export async function readMscz(buf){
+  const files = await unzip(buf);
+  const name = Object.keys(files).find(n => /\.mscx$/i.test(n) && !/^META-INF/.test(n));
+  if(!name) throw new Error('.mscz の中に楽譜が見つかりませんでした');
+  return zipText(files[name]);
+}
+export function parseMscx(text){
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  const score = doc.querySelector('museScore > Score') || doc.querySelector('Score');
+  if(!score) throw new Error('MuseScoreの楽譜が見つかりませんでした');
+  const kids = (el, tag) => [...el.children].filter(c => c.tagName === tag);
+  const one = (el, tag) => [...el.children].find(c => c.tagName === tag);
+  // パート名：Part の中の Staff id → 名前
+  const staffName = {};
+  for(const pt of kids(score, 'Part')){ const nm = one(pt, 'trackName')?.textContent || pt.querySelector('Instrument longName')?.textContent || ''; for(const st of kids(pt, 'Staff')) staffName[st.id || st.getAttribute('id')] = nm; }
+  const BASE = {whole:4, half:2, quarter:1, eighth:0.5, '16th':0.25, '32nd':0.125, '64th':0.0625, '128th':0.03125, breve:8, long:16};
+  const frac = s => { const [a, b] = String(s || '').split('/').map(Number); return a && b ? a/b*4 : 0; };
+  let bpm = 0;
+  const staves = [];
+  for(const st of kids(score, 'Staff')){
+    const id = st.getAttribute('id'), raw = [];
+    let mStart = 0, sig = 4;
+    for(const meas of kids(st, 'Measure')){
+      const voices = kids(meas, 'voice');
+      let mLen = meas.getAttribute('len') ? frac(meas.getAttribute('len')) : 0, maxEnd = 0;
+      for(const v of (voices.length ? voices : [meas])){
+        let t = mStart; const tup = [];
+        for(const el of v.children){
+          const tag = el.tagName;
+          if(tag === 'TimeSig'){ const n = +(one(el,'sigN')?.textContent || 4), dd = +(one(el,'sigD')?.textContent || 4); sig = n*4/dd; if(!meas.getAttribute('len')) mLen = sig; }
+          else if(tag === 'Tempo'){ const tv = +(one(el,'tempo')?.textContent || 0); if(tv && !bpm) bpm = Math.round(tv*60); }
+          else if(tag === 'Tuplet' && one(el, 'normalNotes')){ tup.push((+one(el,'normalNotes').textContent || 1)/(+one(el,'actualNotes').textContent || 1)); }
+          else if(tag === 'endTuplet'){ tup.pop(); }
+          else if(tag === 'location'){ const fr = one(el, 'fractions'); if(fr) t += frac(fr.textContent); }
+          else if(tag === 'Chord' || tag === 'Rest'){
+            if(tag === 'Chord' && [...el.children].some(c => /^(acciaccatura|appoggiatura|grace4|grace16|grace32|grace8after|grace16after|grace32after)$/.test(c.tagName))) continue;
+            const dt = one(el, 'durationType')?.textContent || 'quarter';
+            let dur = dt === 'measure' ? (frac(one(el,'duration')?.textContent) || mLen || sig) : (BASE[dt] || 1);
+            const dots = +(one(el, 'dots')?.textContent || 0); if(dt !== 'measure') dur *= 2 - Math.pow(0.5, dots);
+            for(const f of tup) dur *= f;
+            if(tag === 'Chord') for(const nt of kids(el, 'Note')){
+              const m = +(one(nt, 'pitch')?.textContent || NaN); if(!(m >= 0)) continue;
+              const tieEnd = !!(one(nt, 'endSpanner') || [...nt.children].some(c => c.tagName === 'Spanner' && c.getAttribute('type') === 'Tie' && one(c, 'prev')));
+              const fr = one(nt, 'fret'), sr = one(nt, 'string');
+              if(tieEnd){ let prev = null; for(let i=raw.length-1;i>=0;i--) if(raw[i].m === m){ prev = raw[i]; break; } if(prev){ prev.d = t + dur - prev.t; continue; } }
+              raw.push({m, t, d: dur, s: sr ? NS - 1 - +sr.textContent : null, f: fr ? +fr.textContent : null});
+            }
+            t += dur;
+          }
+        }
+        maxEnd = Math.max(maxEnd, t - mStart);
+      }
+      mStart += mLen || maxEnd || sig;
+    }
+    if(raw.length) staves.push({id, name: staffName[id] || '', notes: raw});
+  }
+  if(!staves.length) throw new Error('音が入っていませんでした');
+  const tab = staves.find(x => tabOK(x.notes));
+  if(tab) return {...fromTab(tab.notes), bpm: bpm || 90, info:`MuseScoreの「${tab.name || 'ギター'}」のタブ譜（弦とフレット）をそのまま取り込みました`};
+  const lead = staves.find(x => /guitar|ギター/i.test(x.name)) || staves[0];
+  const r = fromNotes(lead.notes, staves.flatMap(x=>x.notes));
+  return {...r, bpm: bpm || 90, info:`MuseScore（${staves.length}段）から取り込みました。メロディは「${lead.name || '1段目'}」、${r.bassN ? 'ベースはいちばん低い音から' : 'ベースなし'}`};
+}
+
+/* ---------- Guitar Pro 7・8（.gp は zip、中身は Content/score.gpif） ---------- */
+export async function readGp(buf){
+  const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(40, buf.byteLength)));
+  if(/FICHIER GUITAR PRO/i.test(head)) throw new Error('古い Guitar Pro（.gp3〜.gp5）は直接読めません。MuseScore や TuxGuitar（無料）で開いて MusicXML で保存してから取り込んでください');
+  if(head.startsWith('BCFZ') || head.startsWith('BCFS')) throw new Error('Guitar Pro 6（.gpx）は直接読めません。MuseScore で開いて MusicXML で保存してから取り込んでください');
+  const files = await unzip(buf);
+  const name = Object.keys(files).find(n => /score\.gpif$/i.test(n));
+  if(!name) throw new Error('Guitar Pro の楽譜が見つかりませんでした');
+  return zipText(files[name]);
+}
+export function parseGpif(text){
+  const doc = new DOMParser().parseFromString(text, 'application/xml');
+  const byId = tag => { const o = {}; doc.querySelectorAll(`GPIF > ${tag}s > ${tag}`).forEach(e => o[e.getAttribute('id')] = e); return o; };
+  const bars = byId('Bar'), voices = byId('Voice'), beats = byId('Beat'), notes = byId('Note'), rhythms = byId('Rhythm');
+  const tracks = [...doc.querySelectorAll('GPIF > Tracks > Track')];
+  const tuningOf = tr => (tr.querySelector('Property[name="Tuning"] Pitches')?.textContent || '').trim().split(/\s+/).map(Number).filter(n=>n>=0);
+  let ti = tracks.findIndex(tr => tuningOf(tr).length === 6);
+  if(ti < 0) ti = 0;
+  const tuning = tuningOf(tracks[ti]);
+  const std = tuning.length === 6 && tuning.every((m, i) => m === STRING_MIDI[i]);
+  let bpm = 0; const tv = doc.querySelector('MasterTrack Automation Type'); if(tv && tv.textContent === 'Tempo') bpm = Math.round(+(tv.parentElement.querySelector('Value')?.textContent || '0').split(/\s+/)[0]);
+  const VAL = {Whole:4, Half:2, Quarter:1, Eighth:0.5, '16th':0.25, '32nd':0.125, '64th':0.0625, '128th':0.03125, DoubleWhole:8};
+  const raw = []; let mStart = 0;
+  for(const mb of doc.querySelectorAll('GPIF > MasterBars > MasterBar')){
+    const [n, dd] = (mb.querySelector('Time')?.textContent || '4/4').split('/').map(Number), mLen = n*4/dd;
+    const barId = (mb.querySelector('Bars')?.textContent || '').trim().split(/\s+/)[ti];
+    const bar = bars[barId];
+    if(bar) for(const vid of (bar.querySelector('Voices')?.textContent || '').trim().split(/\s+/)){
+      const v = voices[vid]; if(!v) continue;
+      let t = mStart;
+      for(const bid of (v.querySelector('Beats')?.textContent || '').trim().split(/\s+/)){
+        const b = beats[bid]; if(!b) continue;
+        if(b.querySelector('GraceNotes')) continue;
+        const rh = rhythms[b.querySelector('Rhythm')?.getAttribute('ref')];
+        let dur = VAL[rh?.querySelector('NoteValue')?.textContent] || 1;
+        const dots = +(rh?.querySelector('AugmentationDot')?.getAttribute('count') || 0); dur *= 2 - Math.pow(0.5, dots);
+        const tp = rh?.querySelector('PrimaryTuplet'); if(tp) dur *= (+tp.getAttribute('den') || 1)/(+tp.getAttribute('num') || 1);
+        for(const nid of (b.querySelector('Notes')?.textContent || '').trim().split(/\s+/)){
+          const nt = notes[nid]; if(!nt) continue;
+          const sv = nt.querySelector('Property[name="String"] String'), fv = nt.querySelector('Property[name="Fret"] Fret'), mv = nt.querySelector('Property[name="Midi"] Number');
+          const s = sv ? +sv.textContent : null, f = fv ? +fv.textContent : null;
+          const m = mv ? +mv.textContent : (s != null && f != null && tuning[s] != null ? tuning[s] + f : NaN);
+          if(!(m >= 0)) continue;
+          if(nt.querySelector('Tie')?.getAttribute('destination') === 'true'){ let prev = null; for(let i=raw.length-1;i>=0;i--) if(raw[i].m === m){ prev = raw[i]; break; } if(prev){ prev.d = t + dur - prev.t; continue; } }
+          raw.push({m, t, d: dur, s: std && s != null ? s : null, f: std ? f : null});
+        }
+        t += dur;
+      }
+    }
+    mStart += mLen;
+  }
+  if(!raw.length) throw new Error('音が入っていませんでした');
+  const name = tracks[ti]?.querySelector('Name')?.textContent || 'ギター';
+  if(tabOK(raw)) return {...fromTab(raw), bpm: bpm || 90, info:`Guitar Pro の「${name}」のタブ譜をそのまま取り込みました`};
+  const r = fromNotes(raw, raw);
+  return {...r, bpm: bpm || 90, info:`Guitar Pro の「${name}」から取り込みました（チューニングが標準でないため、弦とフレットは選び直しています）`};
+}
+
+/* ---------- 取り込んだ音 → タブ譜 ---------- */
+// 弦とフレットが全部の音に入っていて、標準チューニングの音の高さと合っているか
+function tabOK(notes){
+  if(!notes.length) return false;
+  let ok = 0;
+  for(const n of notes){ if(n.s == null || n.f == null || n.s < 0 || n.s >= NS || n.f < 0) return false; if(STRING_MIDI[n.s] + n.f === n.m) ok++; }
+  return ok >= notes.length*0.9;
+}
+function fromTab(raw){
+  const byT = new Map();
+  for(const n of raw){ const k = Math.round(n.t*48); if(!byT.has(k)) byT.set(k, {t: n.t, d: n.d, notes: []}); const e = byT.get(k); if(!e.notes.some(x=>x.s===n.s)) e.notes.push({s: n.s, f: n.f}); e.d = Math.max(e.d, n.d); }
+  const ev = [...byT.values()].sort((a,b)=>a.t-b.t), t0 = ev[0].t; ev.forEach(e=>e.t = Math.round((e.t - t0)*48)/48);
+  return finish(ev, true);
+}
+// 弦とフレットのない楽譜 → ソロギター：メロディ（いちばん高い音）＋ベース（拍の頭の、いちばん低い音）
+export let IMPORT_BASS = true;
+export const setImportBass = v => { IMPORT_BASS = !!v; };
+function fromNotes(melNotes, allNotes){
+  const mel = skyline(melNotes.map(n=>({m: n.m, t: n.t, d: n.d})));
+  const lo = STRING_MIDI[0], hi = STRING_MIDI[NS-1] + 12;
+  let best = 0, bestScore = -1;
+  for(let sh=-48; sh<=48; sh+=12){
+    // メロディは高い方の弦の、低めのフレット（E3〜E5：4弦の2フレット〜1弦の12フレット、なるべく3弦の開放〜1弦の5フレット）に来るように
+    const score = mel.filter(n=>n.m+sh >= lo+12 && n.m+sh <= hi).length + mel.filter(n=>n.m+sh >= lo+15 && n.m+sh <= lo+29).length*0.5
+                  - Math.abs(sh)/1000 - mel.filter(n=>n.m+sh < lo+12).length*0.3;
+    if(score > bestScore){ bestScore = score; best = sh; }
+  }
+  const fitM = m => { m += best; while(m < lo + 5) m += 12; while(m > STRING_MIDI[NS-1] + MAX_F) m -= 12; return m; };
+  const t0 = Math.min(...allNotes.map(n=>n.t));
+  const ev = new Map();
+  const at = t => { const k = Math.round((t - t0)*12); if(!ev.has(k)) ev.set(k, {t: k/12, d: 0.25, notes: []}); return ev.get(k); };
+  for(const n of mel){ const e = at(n.t); e.notes.push({m: fitM(n.m)}); e.d = Math.max(e.d, Math.round((n.d || 0.5)*12)/12); }
+  let bassN = 0;
+  if(IMPORT_BASS){
+    // 拍の頭で鳴り始める、いちばん低い音。2拍に1回、または低い音が変わった時だけ（忙しくならないように）
+    const low = new Map();
+    for(const n of allNotes){ const b = (n.t - t0); if(Math.abs(b - Math.round(b)) > 0.03) continue; const k = Math.round(b); const o = low.get(k); if(!o || n.m < o.m) low.set(k, n); }
+    let prevPc = -1, prevK = -9;
+    for(const k of [...low.keys()].sort((a,b)=>a-b)){
+      const n = low.get(k), pc = ((n.m % 12) + 12) % 12;
+      if(pc === prevPc && k - prevK < 2) continue;
+      let m = n.m; while(m < lo) m += 12; while(m > lo + 11) m -= 12;                    // ベースは6弦の開放〜1オクターブ上（6〜4弦あたり）
+      const e = at(k), top = e.notes.length ? Math.max(...e.notes.map(x=>x.m)) : null;
+      if(top != null && top - m < 7) continue;                                          // メロディに近すぎる時は入れない
+      if(top != null && top < lo + 17) continue;                                        // メロディが低すぎて、同じ弦をとり合う
+      e.notes.push({m}); prevPc = pc; prevK = k; bassN++;
+    }
+  }
+  const list = [...ev.values()].sort((a,b)=>a.t-b.t);
+  list.forEach((e,i)=>{ if(i+1 < list.length) e.d = Math.max(0.083, Math.min(e.d, list[i+1].t - e.t)); });
+  const copy = () => list.map(e => ({t: e.t, d: e.d, notes: e.notes.map(n => ({...n}))}));
+  let r = finish(copy(), false);
+  // メロディとベースを同時に押さえると手が届かない（押さえる所が4フレットより開く）所は、ベースを入れない
+  if(bassN){
+    const bad = new Set(r.events.filter(e => e.notes.length > 1 && (()=>{ const fs = e.notes.filter(n=>n.f>0).map(n=>n.f); return fs.length > 1 && Math.max(...fs) - Math.min(...fs) > 4; })()).map(e => Math.round(e.t*12)));
+    if(bad.size){
+      for(const e of list) if(bad.has(Math.round(e.t*12)) && e.notes.length > 1){ const lowM = Math.min(...e.notes.map(n=>n.m)); e.notes = e.notes.filter(n => n.m !== lowM); bassN--; }
+      r = finish(copy(), false);
+    }
+  }
+  return {...r, bassN};
+}
+
 function skyline(notes){
   const byT = new Map();
   for(const n of notes){ const k = Math.round(n.t*48); const o = byT.get(k); if(!o || n.m > o.m) byT.set(k, n); }
@@ -192,22 +404,6 @@ function skyline(notes){
   out.forEach((n,i)=>{ if(i+1 < out.length) n.d = Math.min(n.d || 1, out[i+1].t - n.t); });
   return out;
 }
-// 音の高さだけの曲 → ギターで弾ける高さにそろえて（オクターブ単位で上下）、弦とフレットを決める
-function fromPitches(notes){
-  const lo = STRING_MIDI[0], hi = STRING_MIDI[NS-1] + 12;
-  let best = 0, bestScore = -1;
-  for(let sh=-48; sh<=48; sh+=12){
-    const score = notes.filter(n=>n.m+sh >= lo && n.m+sh <= hi).length - Math.abs(sh)/1000 - notes.filter(n=>n.m+sh < lo+5).length*0.1;
-    if(score > bestScore){ bestScore = score; best = sh; }
-  }
-  const t0 = notes[0].t;
-  const ev = notes.map(n=>{
-    let m = n.m + best; while(m < lo) m += 12; while(m > STRING_MIDI[NS-1] + MAX_F) m -= 12;
-    return {t: Math.round((n.t - t0)*12)/12, d: Math.max(0.25, Math.round((n.d || 0.5)*12)/12), notes: [{m}]};
-  });
-  return finish(ev, false);
-}
-
 /* ---------- 弦・フレット・指を決める ----------
    ポジション P（人差し指のフレット）を音ごとに決める。手の移動・高いフレット・指の広げすぎを「コスト」にして、
    曲全体でいちばん楽になる組み合わせを選ぶ（動的計画法） */

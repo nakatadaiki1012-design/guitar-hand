@@ -49,6 +49,13 @@
   #chordName{flex:0 1 auto;max-width:45%}
   #difficulty{min-height:1.4em}
   .tabhint{font-size:12px;margin:2px 2px 6px}
+  .imp-opt{display:block;font-size:12px;margin:6px 2px}
+  .avrow{display:flex;gap:8px;align-items:center}
+  .avrow input{flex:1}
+  .avrow b{min-width:58px;text-align:right;font-size:13px}
+  #syncFlash{position:absolute;left:50%;top:50%;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;background:radial-gradient(circle,#fff 0,#ffd25a 45%,rgba(255,210,90,0) 70%);pointer-events:none;z-index:20;opacity:0}
+  .imp-note{font-size:11px;margin:2px}
+  #tab-tabs.drop{outline:3px dashed var(--accent, #0e9f9a);outline-offset:-6px}
   #chordName{font-size:34px;font-weight:800;line-height:1}
   #chordReading{color:var(--sub);font-size:13px}
   #difficulty .tabhead{color:#0e9f9a;font-size:12px;font-weight:700;margin-right:8px}
@@ -342,6 +349,9 @@
       <div class="set-group"><span>ソロの右手</span><div class="opts" id="optPick"></div></div>
       <div class="set-group"><span>カポの時のコード名</span><div class="opts" id="optCapoName"></div></div>
       <div class="set-group"><span>軽さ（重い端末は「軽い」に）</span><div class="opts" id="optQuality"></div></div>
+      <div class="set-group"><span>音と動きのずれ（Bluetoothのイヤホンなどで、音が手の動きより遅れる時）</span>
+        <div class="avrow"><input type="range" id="avDelay" min="-100" max="400" step="10" value="0"><b id="avDelayVal">0ms</b><button class="chip" id="avTest">合わせる</button></div>
+        <small id="avAuto" class="muted">「合わせる」を押すと、カチッという音と画面の光が出ます。音と光がぴったり重なるように、つまみを動かしてください（音が遅れて聞こえる時は右へ）。</small></div>
       <div class="set-group"><span>表示</span><div class="opts" id="optShow"></div></div>
     </div>
     <div class="legend">
@@ -442,9 +452,11 @@
         <details class="import">
           <summary>📥 タブ譜・楽譜を取り込む</summary>
           <div class="imp-row">
-            <label class="chip filebtn">ファイルを選ぶ<input type="file" id="tabFile" accept=".mid,.midi,.xml,.musicxml,.mxl,.txt,.tab"></label>
-            <small>MIDI（.mid）・MusicXML（.musicxml / .xml / .mxl）・文字のタブ譜（.txt）</small>
+            <label class="chip filebtn">ファイルを選ぶ<input type="file" id="tabFile" accept=".mid,.midi,.xml,.musicxml,.mxl,.mscz,.mscx,.gp,.gpx,.gp3,.gp4,.gp5,.txt,.tab"></label>
+            <small>MuseScore（.mscz）・Guitar Pro 7/8（.gp）・MusicXML（.musicxml / .mxl）・MIDI（.mid）・文字のタブ譜（.txt）。ファイルをこの画面に落としてもOK</small>
           </div>
+          <label class="imp-opt"><input type="checkbox" id="impBass" checked> タブ譜のない楽譜は、メロディにベースも足してソロギターにする</label>
+          <p class="muted imp-note">musescore.com などの楽譜は、ダウンロードした MuseScore・MusicXML・MIDI のファイルを取り込めます。ギターのタブ譜つきの楽譜は、楽譜どおりの弦とフレットで弾きます。</p>
           <textarea id="tabPaste" rows="7" spellcheck="false" placeholder="ここに文字のタブ譜を貼り付け（6行ひとまとまり・上が1弦）
 e|-------0---------|
 B|-----1---1-------|
