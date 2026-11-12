@@ -355,6 +355,12 @@ const PRM_STEP = {pitch:8, yaw:8, roll:8, yK:5, zK:5, dx1:4, dx2:4, dx3:4, dx4:4
 const PRM_LIM  = {pitch:[-45,45], yaw:[-35,35], roll:[-35,35], yK:[18,64], zK:[-42,8], dx1:[-24,4], dx2:[-24,4], dx3:[-24,4], dx4:[-24,4]};
 const poseCache = new Map();
 export const clearPoseCache = () => poseCache.clear();
+// ソロの音ごとの形（キーに '|' が入る）は数が多いので、たまりすぎたら古いものから捨てる（コードの形は残す）。捨てた形は、要る時に計算し直す
+const POSE_CAP = 2500;
+function trimPoseCache(){
+  if(poseCache.size <= POSE_CAP) return;
+  for(const k of poseCache.keys()){ if(poseCache.size <= POSE_CAP*0.8) break; if(k.includes('|')) poseCache.delete(k); }
+}
 export const poseParts = key => { const hb = poseCache.get(key); return hb ? {cost: hb.cost, parts: hb.parts} : null; };   // 検証用：その形のコストの内わけ   // ギターの種類を変えた時は計算し直す
 function localSearch(chord, rig, prm, pressing, scales, opts={}){
   let best = buildHand(chord, rig, prm, undefined, opts), thStart = best.th.ang;
@@ -481,6 +487,7 @@ export function computeTabPose(chord, rig, P=1, hover=null, grip='spread', home=
       hb = buildHand(chord, rig, prm, form.th.ang, {anc: form.anc, hoverP: P, hoverS: ss.length ? ss.reduce((a,b)=>a+b,0)/ss.length : 2.5, hoverT});
       hb.prm = prm; hb.grip = grip;
       poseCache.set(key, hb);
+      trimPoseCache();
       return poseFromHand(hb, chord, rig);
     }
     const an = positionAnchor(P, rig, grip, home);
@@ -509,6 +516,7 @@ export function computeTabPose(chord, rig, P=1, hover=null, grip='spread', home=
     }
     hb.prm = prm; hb.grip = grip;
     poseCache.set(key, hb);
+    trimPoseCache();
   }
   return poseFromHand(hb, chord, rig);
 }

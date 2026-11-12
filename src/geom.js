@@ -50,7 +50,6 @@ export const GUITARS = {
   },
 };
 export let GTYPE = 'acoustic', G = GUITARS.acoustic;
-export const isElectric = () => GTYPE !== 'acoustic';
 export let SCALE_LEN, FRET_TOP = 1.2, FB_T, NECK_BACK_Z, BODY_X0, BODY_LEN, BODY_DEPTH, BODY_TOP, FB_END, HEAD_LEN, NUM_FRETS, STRING_R, STRUM_X;
 export const fretX = n => G.scale*(1-Math.pow(2,-n/12));        // 実物と同じフレット間隔
 export const slotCenter = f => (fretX(f-1)+fretX(f))/2;

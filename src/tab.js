@@ -421,6 +421,29 @@ function choices(e, fixed){
   const span = cb => { const fs = cb.filter(n=>n.f>0).map(n=>n.f); return fs.length ? Math.max(...fs) - Math.min(...fs) : 0; };
   return combos.sort((a,b)=>span(a)-span(b)).slice(0, 10);
 }
+/* ---------- 取り込んだ曲を、この端末に残す形 ----------
+   残すのは「何拍目に・何拍・どの弦の何フレット」だけ（指や手の形は、読み直した時にその時の決め方で決め直す）。
+   形：[[t, d, s, f, s, f, ...], ...] */
+export function packEvents(events){
+  return events.map(e => [Math.round(e.t*1000)/1000, Math.round(e.d*1000)/1000, ...e.notes.flatMap(n => [n.s, n.f])]);
+}
+// 中身を確かめてから曲に戻す。おかしな音は捨て、残った音が1つもなければ null
+export function unpackEvents(list){
+  if(!Array.isArray(list)) return null;
+  const ev = [];
+  for(const a of list.slice(0, 20000)){
+    if(!Array.isArray(a) || a.length < 4) continue;
+    const t = +a[0], d = +a[1];
+    if(!(t >= 0 && t < 1e5) || !(d > 0 && d < 1e3)) continue;
+    const notes = [];
+    for(let i=2; i+1<a.length; i+=2){ const s = a[i], f = a[i+1]; if(Number.isInteger(s) && s >= 0 && s < NS && Number.isInteger(f) && f >= 0 && f <= 24 && !notes.some(n=>n.s===s)) notes.push({s, f}); }
+    if(notes.length) ev.push({t, d, notes});
+  }
+  if(!ev.length) return null;
+  ev.sort((a,b)=>a.t-b.t);
+  return finish(ev, true);
+}
+
 function finish(ev, fixed){
   ev = ev.filter(e=>e.notes.length);
   const opts = ev.map(e=>choices(e, fixed));

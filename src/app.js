@@ -12,16 +12,31 @@ import { createView, VIEWS } from './view.js';
 import { BACKDROPS } from './backdrop.js';
 import { FINISHES } from './guitar.js';
 import { GUITARS, NSTR, strY, STRUM_X, stringZ, STRING_R, fretX, FRET_TOP, SCALE_LEN, halfW } from './geom.js';
-import { parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, readMscz, parseMscx, readGp, parseGpif, setImportBass, eventChord, eventPressed, noteName, fingerPlan, applyChordHold, markSweep } from './tab.js';
+import { packEvents, unpackEvents, parseCompact, parseTabText, parseMidi, parseMusicXML, readMxl, readMscz, parseMscx, readGp, parseGpif, setImportBass, eventChord, eventPressed, noteName, fingerPlan, applyChordHold, markSweep } from './tab.js';
 import { PATTERNS, strumState, idleState, STRUM_AMP } from './strum.js';
 import { fingerPlanRight, fingerStateAt } from './fingerpick.js';
+import { load, save, onChange, isStr, num, oneOf } from './store.js';
 
 const state = {root:'C', type:'', mirror:false, badges:true, ghost:true, rightMode:'always', speed:1, swing:false, split:false,
                bg:'day', capo:0, guitar:'acoustic', finishes:{acoustic:'natural', electric:'sunburst', lespaul:'cherry'}, chart:true, leftHand:true, avDelay:0, pickStyle:'finger', capoName:'sound', boardMode:'all', key:'C', keyMinor:false};   // boardMode：コードのボード（all＝順に並べる／key＝キーで並べる）   // capoName：カポの時に大きく出すコード名（sound＝実際の音／shape＝押さえる形）   // pickStyle：ソロの右手（finger＝指弾き / pick＝ピック）
 // 設定は次に開いた時も同じになるように覚えておく（覚えられない端末ではそのまま）
 const SAVED = ['mirror','badges','ghost','rightMode','split','bg','guitar','finishes','chart','leftHand','capo','cam','avDelay','pickStyle','capoName','boardMode','key','keyMinor'];
-try{ const sv = JSON.parse(localStorage.getItem('guitarSettings') || '{}'); for(const k of SAVED) if(k in sv) state[k] = sv[k]; }catch(e){}
-const saveSettings = () => { try{ localStorage.setItem('guitarSettings', JSON.stringify(Object.fromEntries(SAVED.map(k=>[k, state[k]])))); }catch(e){} };
+// 読んだ値は1つずつ確かめる（古い版・壊れた値・知らない値は使わず、はじめの値のまま）
+const BOOL = v => typeof v === 'boolean' ? v : undefined;
+const SETTING_CHECK = {
+  mirror: BOOL, badges: BOOL, ghost: BOOL, split: BOOL, chart: BOOL, leftHand: BOOL, keyMinor: BOOL,
+  rightMode: v => oneOf(v, ['always','playing','off']), bg: v => oneOf(v, Object.keys(BACKDROPS)), guitar: v => oneOf(v, Object.keys(GUITARS)),
+  finishes: v => v && typeof v === 'object' ? Object.fromEntries(Object.keys(GUITARS).map(g => [g, FINISHES[g] && FINISHES[g][v[g]] ? v[g] : state.finishes[g]])) : undefined,
+  capo: v => Number.isInteger(v) && v >= 0 && v <= 9 ? v : undefined, avDelay: v => num(v, -100, 400),
+  pickStyle: v => oneOf(v, ['finger','pick']), capoName: v => oneOf(v, ['sound','shape']), boardMode: v => oneOf(v, ['all','key']),
+  key: v => oneOf(v, ROOTS.map(r=>r.id)),
+  cam: v => v && typeof v === 'object' ? {size: oneOf(v.size, ['s','m','l'], 'm'), flip: v.flip !== false, x: num(v.x, -1e4, 1e4, null), y: num(v.y, -1e4, 1e4, null), layout: oneOf(v.layout, ['side','pip'], 'side')} : undefined,
+};
+{
+  const sv = load('guitarSettings', d => d && typeof d === 'object' ? d : undefined) || {};
+  for(const k of SAVED) if(k in sv){ const v = SETTING_CHECK[k] ? SETTING_CHECK[k](sv[k]) : undefined; if(v !== undefined) state[k] = v; }
+}
+const saveSettings = () => save('guitarSettings', Object.fromEntries(SAVED.map(k=>[k, state[k]])));
 let view = null, rig = null;
 let poseFrom = null, poseTo = null, tweenStart = 0;
 let TWEEN_MS = 450, tweenDur = 450;
@@ -171,12 +186,6 @@ function playStroke(chord, dir, when, vol, gap=0.009){
   for(let k=0;k<NSTR;k++){ const si = dir==='D' ? k : NSTR-1-k; if(chord.frets[si] >= 0 && (dir==='D' || si >= 2)) list.push(si); }
   list.forEach((si,k)=>playString(si, chord.frets[si], when + k*gap, vol*0.8));
 }
-function arpeggio(chord){
-  ensureAudio();
-  const t = actx.currentTime + 0.02;
-  let k = 0;
-  for(let si=0; si<NSTR; si++) if(chord.frets[si] >= 0) playString(si, chord.frets[si], t+(k++)*0.4, 0.4);
-}
 function click(when, accent){
   const o = actx.createOscillator(), g = actx.createGain();
   o.frequency.value = accent? 1500 : 1000;
@@ -292,14 +301,6 @@ function updateButtons(){
 }
 buildBoard();
 
-// ボタンの切り替え（ひとつだけ選べるグループ）
-function segment(id, fn){
-  const el = document.getElementById(id);
-  el.querySelectorAll('button').forEach(b=>b.onclick = ()=>{
-    el.querySelectorAll('button').forEach(x=>x.classList.toggle('on', x===b));
-    fn(b.dataset.v); kick();
-  });
-}
 // アングル：押すたびに次の向きへ
 const ANGLES = ['diag','self','front','side','right','both'];
 let angle1 = 'diag', angle2 = 'front';
@@ -487,7 +488,7 @@ const progSel = document.getElementById('progSel'), progChords = document.getEle
    Bb・A# → B♭、am → Am、M7 → maj7 のような書き方も受け付ける */
 const customRow = document.getElementById('customRow'), customIn = document.getElementById('customProg'), customMsg = document.getElementById('customMsg');
 let customList = ['C','Am','F','G7'];
-try{ const sv = JSON.parse(localStorage.getItem('guitarCustomProg') || 'null'); if(Array.isArray(sv) && sv.length) customList = sv; }catch(e){}
+{ const sv = load('guitarCustomProg', d => Array.isArray(d) ? d.filter(c => isStr(c, 24) && getChord(c)).slice(0, 200) : undefined); if(sv && sv.length) customList = sv; }
 customIn.value = customList.join(' ');
 function normChord(t){ const r = resolveChord(t); return r ? r.name : null; }
 function readCustom(){
@@ -500,7 +501,7 @@ function readCustom(){
                                      : ok.length ? `${ok.length}小節をくり返します` : 'コードを書いてください';
   if(!ok.length) return;
   customList = ok;
-  try{ localStorage.setItem('guitarCustomProg', JSON.stringify(ok)); }catch(e){}
+  save('guitarCustomProg', ok);
   if(progSel.value === 'custom'){
     prog.list = customList; prog.pos %= ok.length; renderProg();
     if(!prog.running) setChord(prog.list[prog.pos]);
@@ -509,9 +510,14 @@ function readCustom(){
 customIn.oninput = readCustom;
 /* ---------- 取り込んだ曲（コード譜から） ----------
    imported：[{name, chords（書かれていたままのコード名）, capo}]。この端末に残す */
-let imported = [];
-try{ const sv = JSON.parse(localStorage.getItem('guitarImportedProgs') || '[]'); if(Array.isArray(sv)) imported = sv.filter(x=>x && Array.isArray(x.chords)); }catch(e){}
-const saveImported = () => { try{ localStorage.setItem('guitarImportedProgs', JSON.stringify(imported)); }catch(e){} };
+let imported;
+// 取り込んだコード進行：{name（40文字まで）, chords（コード名の並び、400個まで）, capo（0〜9）}
+const checkImported = d => Array.isArray(d) ? d.map(x => x && typeof x === 'object' && Array.isArray(x.chords) ? {
+    name: isStr(x.name, 80) && x.name.trim() ? x.name.slice(0, 40) : '取り込んだ曲',
+    chords: x.chords.filter(c => isStr(c, 24)).slice(0, 400),
+    capo: Number.isInteger(x.capo) ? num(x.capo, 0, 9) : 0} : null).filter(x => x && x.chords.length) : undefined;
+imported = load('guitarImportedProgs', checkImported) || [];
+const saveImported = () => { if(!save('guitarImportedProgs', imported)) showSaveFail(impMsg); };
 const impMsg = document.getElementById('impMsg'), impDel = document.getElementById('impDel');
 function buildProgSel(keep){
   progSel.innerHTML = PROGRESSIONS.map((p,i)=>`<option value="${i}">${p.name}（${p.chords.join('→')}）</option>`).join('')
@@ -550,10 +556,13 @@ impDel.onclick = ()=>{
   imported.splice(+progSel.value.slice(4), 1); saveImported(); buildProgSel('0'); progSel.onchange();
 };
 function addImportedProg(sheet, fallbackTitle){
+  // 外から来たデータ（URL・貼り付け）なので、形を確かめてから使う
+  const chords = Array.isArray(sheet.chords) ? sheet.chords.filter(c => isStr(c, 24)).slice(0, 400) : [];
+  sheet = {title: isStr(sheet.title, 200) ? sheet.title : '', chords, capo: Number.isInteger(sheet.capo) ? num(sheet.capo, 0, 9) : 0};
   const {names, bad} = resolveList(sheet.chords);
   if(!names.length) throw new Error(sheet.chords.length ? `コードは見つかりましたが、どれも押さえ方がありません（${bad.slice(0,6).join('、')}）` : 'コードが見つかりませんでした');
-  const name = cleanTitle(sheet.title) || fallbackTitle || `取り込んだ曲 ${imported.length + 1}`;
-  imported.push({name, chords: sheet.chords, capo: sheet.capo || 0}); saveImported();
+  const name = (cleanTitle(sheet.title) || fallbackTitle || `取り込んだ曲 ${imported.length + 1}`).slice(0, 40);
+  imported.push({name, chords: sheet.chords, capo: sheet.capo}); saveImported();
   buildProgSel('imp:' + (imported.length - 1));
   document.querySelector('[data-tab="practice"]').click();
   progSel.onchange();
@@ -562,6 +571,7 @@ function addImportedProg(sheet, fallbackTitle){
 // アプリのURLの後ろに #import=… が付いていたら（取り込みボタンから開いた時）、その曲を入れる
 function importFromHash(){
   const m = location.hash.match(/^#import=(.+)$/); if(!m) return;
+  if(m[1].length > 60000){ history.replaceState(null, '', location.pathname + location.search); return; }   // 大きすぎるものは読まない
   try{
     const d = JSON.parse(decodeURIComponent(m[1]));
     const name = addImportedProg({title: d.t, chords: d.c, capo: d.k}, '取り込んだ曲');
@@ -813,9 +823,35 @@ function tabGlow(){
 function loadTabSongs(){
   // 伴奏のコードがある曲は、コードの形を押さえたまま弾く
   tabs.list = TAB_SONGS.map(sg=>{ const r = parseCompact(sg.tab); applyChordHold(r.events, sg.chords, sg.pickup, sg.shapes); markSweep(r.events); return {...sg, ...r}; });
-  try{ for(const sg of JSON.parse(localStorage.getItem('guitarTabImports') || '[]')){ markSweep(sg.events); tabs.list.push(sg); } }catch(e){}
+  for(const sg of loadTabImports()) tabs.list.push(sg);
 }
-const saveImports = () => { try{ localStorage.setItem('guitarTabImports', JSON.stringify(tabs.list.filter(t=>t.imported), (k,v)=>k === 'plan' || k === 'rplan' ? undefined : v)); }catch(e){} };
+/* 取り込んだタブ譜：残すのは曲名・テンポ・拍子・説明と、音（何拍目・長さ・弦・フレット）だけ。指や手の形は読み直した時に決め直す
+   （手の形の計算の中身や、先読みの途中のものまで残すと、大きくなって入らなくなったり、版が変わった時に壊れたりするので） */
+const TAB_KEY = 'guitarTabImports';
+function checkTabImports(d, v){
+  if(!Array.isArray(d)) return undefined;
+  const out = [];
+  for(const x of d.slice(0, 100)){
+    if(!x || typeof x !== 'object') continue;
+    const r = v >= 1 ? unpackEvents(x.ev) : unpackEvents(Array.isArray(x.events) ? packEvents(x.events.filter(e => e && Array.isArray(e.notes))) : null);   // v:0＝前の版（音を丸ごと残していた）
+    if(!r) continue;
+    const title = isStr(x.title, 200) && x.title.trim() ? x.title.slice(0, 60) : '取り込んだ曲';
+    out.push({title, short: title.length > 14 ? title.slice(0,13) + '…' : title, credit:'取り込んだ曲', bpm: num(x.bpm, 40, 160, 90), beats: Number.isInteger(x.beats) ? num(x.beats, 2, 12) : 4, pickup: 0,
+              info: isStr(x.info, 300) ? x.info : '', imported: true, events: r.events, length: r.length});
+  }
+  return out;
+}
+function loadTabImports(){ const l = load(TAB_KEY, checkTabImports) || []; for(const sg of l) markSweep(sg.events); return l; }
+function saveImports(){
+  const data = tabs.list.filter(t=>t.imported).map(t => ({title: t.title, bpm: t.bpm, beats: t.beats, info: t.info || '', ev: packEvents(t.events)}));
+  return save(TAB_KEY, data);
+}
+// 保存できなかった時：アプリはそのまま使えるが、次に開いた時には残っていないことを知らせる
+function showSaveFail(el){
+  if(!el) return;
+  el.className = 'msg bad';
+  el.textContent = (el.textContent ? el.textContent + '　' : '') + '※この端末の保存の容量がいっぱいか、保存できない設定のため、次に開いた時には残りません（取り込んだ曲をいくつか消すと保存できます）';
+}
 loadTabSongs();
 const tabList = document.getElementById('tabList'), tabSheet = document.getElementById('tabSheet'), tabBpm = document.getElementById('tabBpm');
 function renderTabList(){
@@ -1123,10 +1159,11 @@ function addImported(res, title){
               events: res.events, length: res.length, info: res.info || '', imported: true};
   if(!sg.events.length) throw new Error('弾ける音が見つかりませんでした');
   markSweep(sg.events);
-  tabs.list.push(sg); saveImports();
+  tabs.list.push(sg);
   selectTab(tabs.list.length - 1);
   tabMsg.className = 'msg ok';
   tabMsg.textContent = `「${title}」を取り込みました（${sg.events.length}音）。押さえる指は自動で決めています`;
+  tabs.saveOk = saveImports();
 }
 const fail = e => { tabMsg.className = 'msg bad'; tabMsg.textContent = '取り込めませんでした：' + (e.message || e); };
 /* ファイルを読む：拡張子と中身から形式を見分ける
@@ -1152,6 +1189,7 @@ async function importFile(f){
     }
     addImported(res, name);
     if(res.info) tabMsg.textContent += '。' + res.info;
+    if(!tabs.saveOk) showSaveFail(tabMsg);
   }catch(e){ console.error(e); fail(e); }
 }
 document.getElementById('tabFile').onchange = ev=>{ const f = ev.target.files[0]; ev.target.value = ''; if(f) importFile(f); };
@@ -1164,13 +1202,26 @@ document.getElementById('tabFile').onchange = ev=>{ const f = ev.target.files[0]
 }
 document.getElementById('tabPasteGo').onclick = ()=>{
   const text = document.getElementById('tabPaste').value;
-  try{ addImported(parseTabText(text), document.getElementById('tabPasteName').value.trim() || '貼り付けたタブ譜'); }catch(e){ fail(e); }
+  try{ addImported(parseTabText(text), document.getElementById('tabPasteName').value.trim() || '貼り付けたタブ譜'); if(!tabs.saveOk) showSaveFail(tabMsg); }catch(e){ fail(e); }
 };
 document.getElementById('btnTabDel').onclick = ()=>{
   const sg = TAB(); if(!sg.imported) return;
-  tabs.list.splice(tabs.idx, 1); saveImports(); selectTab(0);
+  tabs.list.splice(tabs.idx, 1); const ok = saveImports(); selectTab(0); if(!ok) showSaveFail(tabMsg);
 };
 renderTabList(); renderTabSheet();
+// 別のタブ・ウィンドウで取り込んだ曲が増えた・消えた時は、こちらの一覧も合わせる（古い一覧で上書きして消さないように）
+onChange(TAB_KEY, ()=>{
+  if(tabs.running) stopTab();
+  const cur = TAB(), keep = cur && !cur.imported ? tabs.idx : 0;
+  tabs.list = tabs.list.filter(t => !t.imported).concat(loadTabImports());
+  tabs.idx = Math.min(keep, tabs.list.length - 1);
+  renderTabList(); renderTabSheet();
+});
+onChange('guitarImportedProgs', ()=>{
+  imported = load('guitarImportedProgs', checkImported) || [];
+  const v = progSel.value, gone = /^imp:/.test(v) && !imported[+v.slice(4)];
+  buildProgSel(gone ? '0' : v); if(gone && !prog.running) progSel.onchange();
+});
 
 /* ---------- いま演奏しているもの（練習 or 曲）を同じ形で扱う ---------- */
 function playing(){
